@@ -1470,7 +1470,6 @@ static void dlclose_python(void *handle){
 
 
 chassis_plugin_config * network_mysqld_pyproxy_plugin_new(void) {
-	g_critical("The size of off_t is:%d", sizeof(off_t));
 	chassis_plugin_config *config;
 
 	config = g_new0(chassis_plugin_config, 1);

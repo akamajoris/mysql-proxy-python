@@ -330,22 +330,27 @@ static MYSQL_FIELD *create_field(PyObject *item){
 
 static GPtrArray *create_fields(PyObject *resultset){
 	assert(resultset);
-	PyObject *res_fields = PyObject_GetAttrString(resultset, "fields");
-	if(!res_fields)
+	if(!PyDict_Check(resultset)){
+		PyErr_SetString(PyExc_ValueError, "response.resultset must be a dict");
 		return NULL;
+	}
+	PyObject *res_fields = PyDict_GetItemString(resultset, "fields");
+	if(!res_fields){
+		PyErr_SetString(PyExc_KeyError, "resultset has no key named 'fields'!");
+		return NULL;
+	}
 	if(!PySequence_Check(res_fields)){
 		PyErr_SetString(PyExc_ValueError, "proxy.response.resultset.fields should be eigher a "
 					"list or a tuple");
-		Py_DECREF(res_fields);
 		return NULL;
 	}
-	Py_DECREF(res_fields);
 	GPtrArray *fields = network_mysqld_proto_fielddefs_new();
 	int i;
 	for(i = 0; i < PySequence_Size(res_fields); i++){
 		PyObject *item = PySequence_GetItem(res_fields, i);
 		if(!item){
 			network_mysqld_proto_fielddefs_free(fields);
+			g_critical("Create item failed");
 			return NULL;
 		}
 		MYSQL_FIELD *field = create_field(item);
@@ -353,7 +358,7 @@ static GPtrArray *create_fields(PyObject *resultset){
 
 		if(!field){
 			network_mysqld_proto_fielddefs_free(fields);
-			PyErr_Print();
+			g_critical("Create fields failed");
 			return NULL;
 		}
 		g_ptr_array_add(fields, field);
@@ -414,16 +419,15 @@ failed:
 
 static GPtrArray *create_rows(PyObject *resultset){
 	assert(resultset);
-	PyObject *res_rows = PyObject_GetAttrString(resultset, "rows");
+	//Now the resultset has been checked in create_fields.
+	PyObject *res_rows = PyDict_GetItemString(resultset, "rows");
 	if(!res_rows)
 		return NULL;
 	if(!PySequence_Check(res_rows)){
 		PyErr_SetString(PyExc_ValueError, "proxy.response.resultset.rows .."
 					" should be a sequence");
-		Py_DECREF(res_rows);
 		return NULL;
 	}
-	Py_DECREF(res_rows);
 	GPtrArray *rows = g_ptr_array_new();
 	int i = 0;
 	for(i = 0; i < PySequence_Size(res_rows); i++){
@@ -522,7 +526,9 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyO
 
 			GPtrArray *fields = create_fields(resultset);
 			if(!fields){
-				network_mysqld_con_send_error(con->client, C("Cannot get proxy.response.resultset.fields"));
+				network_mysqld_con_send_error(con->client, C("Cannot get proxy.response.resultset.fields!"));
+				PyErr_Print();
+				PyErr_Clear();
 				return -1;
 			}
 			if(fields->len <= 0){

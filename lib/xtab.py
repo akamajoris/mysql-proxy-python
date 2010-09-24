@@ -122,7 +122,7 @@ xtab_unknown_operator = {
 }
 
 #-
-#- xtab parameters to be passed from read_query ro read_query_result 
+#- xtab parameters to be passed from read_query ro read_query_result
 #-
 xtab_params = {}
 
@@ -135,6 +135,8 @@ def read_query( proxy, packet ):
 	if ord(packet[0]) != proxy.COM_QUERY :
 		return
 
+	global xtab_error_status
+	global xtab_params
 	xtab_params = {}
 	xtab_error_status = 0
 
@@ -161,7 +163,7 @@ def read_query( proxy, packet ):
 	if len(query_tokens) == START_TOKEN + 1:
 		if (option.lower() == 'help'):
 			proxy.response.resultset = xtab_help_resultset
-			f, r = proxy.response.resultset.fields, proxy.response.resultset.rows
+			f, r = xtab_help_resultset['fields'],xtab_help_resultset['rows']
 		elif option.lower() == 'version' :
 			proxy.response.resultset = xtab_version_resultset
 		elif option.lower() == 'query' :
@@ -193,7 +195,10 @@ def read_query( proxy, packet ):
 	col_field  = query_tokens[START_TOKEN + 2 ].text
 	op         = query_tokens[START_TOKEN + 3 ].text
 	op_col     = query_tokens[START_TOKEN + 4 ].text
-	if (query_tokens[START_TOKEN + 5 ] ) :
+	print 'Query_tokens:', query_tokens
+	print 'START_TOKEN:', START_TOKEN
+
+	if (len(query_tokens) == START_TOKEN + 7) :
 		summary    = query_tokens[START_TOKEN + 5 ].text
 	else:
 		summary = ''
@@ -218,14 +223,14 @@ def read_query( proxy, packet ):
 	xtab_params['op_col']     = op_col
 	xtab_params['summary']    = summary.lower() == 'summary'
 
-	print_debug('summary: ' + xtab_params['summary'])
+	print_debug('summary: ' + str(xtab_params['summary']))
 
 	proxy.queries.append(xtab_id_before,
-		chr(proxy.COM_QUERY) + "set group_concat_max_len = 1024*1024", true)
+		chr(proxy.COM_QUERY) + "set group_concat_max_len = 1024*1024", True)
 
 	proxy.queries.append(xtab_id_start,
 		chr(proxy.COM_QUERY) +
-		string.format('''
+		'''
 		  select group_concat( distinct concat(
 			'%s(if( `%s`= ', quote(%s),',`%s`,null)) as `%s_',%s,'`' )
 			 order by `%s` ) from `%s` order by `%s`''' %\
@@ -237,14 +242,15 @@ def read_query( proxy, packet ):
 			col_field,
 			col_field,
 			table_name,
-			col_field, )
-		), true)
+			col_field, ), True)
 	return proxy.PROXY_SEND_QUERY
 
 def read_query_result(proxy, inj):
-	print_debug('injection id ' +  inj.id + ' error status: ' + xtab_error_status)
+	global  xtab_error_status
+	print_debug('injection id ' + str(inj.id) + ' error status: ' +\
+			str(xtab_error_status))
 	if xtab_error_status > 0 :
-		print_debug('ignoring resultset ' + inj.id + ' for previous error')
+		print_debug('ignoring resultset ' + str(inj.id) + ' for previous error')
 		return proxy.PROXY_IGNORE_RESULT
 	res = inj.resultset
 	#-
@@ -260,14 +266,14 @@ def read_query_result(proxy, inj):
 	#- ignoring the preparatory queries
 	#-
 	if (inj.id >= xtab_id_before) and (inj.id < xtab_id_start) :
-		print_debug ('ignoring preparatory query from xtab ' + inj.id )
+		print_debug ('ignoring preparatory query from xtab ' + str(inj.id ))
 		return proxy.PROXY_IGNORE_RESULT
 
 	#-
 	#- creating the XTAB query
 	#-
 	if (inj.id == xtab_id_start) :
-		print_debug ('getting columns resultset from xtab ' + inj.id )
+		print_debug ('getting columns resultset from xtab ' + str(inj.id))
 		col_query = ''
 
 		for row in inj.resultset.rows:
@@ -275,6 +281,7 @@ def read_query_result(proxy, inj):
 
 		print_debug ('column values : ' + col_query)
 		#TODO
+		print '-' * 50, xtab_params
 		col_query.replace(',' + xtab_params['operation'], '\n, ' + xtab_params['operation'])
 		xtab_query = '''
 		  SELECT
@@ -318,7 +325,7 @@ def read_query_result(proxy, inj):
 	#- Getting the final xtab result
 	#-
 	if (inj.id == xtab_id_exec) :
-		print_debug ('getting final xtab result ' + inj.id )
+		print_debug ('getting final xtab result ' + str(inj.id ))
 		#-
 		#- Replacing the default NULL value provided by WITH ROLLUP
 		#- with a more human readable value

@@ -1819,8 +1819,8 @@ int init_python_types(void){
 
 	PyThreadState *tstate = PyThreadState_GET();
 	PyObject *sd = tstate->interp->builtins;
-	//PyDict_SetItemString(sd, "ResponseResultset", (PyObject*)&ResponseResultset_Type);
 	//What is this?
+	//PyDict_SetItemString(sd, "ResponseResultset", (PyObject*)&ResponseResultset_Type);
 	PyDict_SetItemString(sd, "proxy", proxy_constants);
 	Py_DECREF(proxy_constants);
 

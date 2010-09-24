@@ -43,21 +43,24 @@ def read_query_result(proxy, inj):
     #collectgarbage("collect") #- trigger a full GC
     print '-' * 50, fields
 
-    proxy.response = {
-        'type' : proxy.MYSQLD_PACKET_OK,
-        'resultset' : {
-            'fields' : [],
-            'rows' : [],
-        }
-    }
+    rfields = []
+    rrows = []
 
-    proxy.response.resultset.fields.append((fields[0].name, fields[1].type))
-    proxy.response.resultset.fields.append((fields[1].name, fields[1].type))
+    rfields.append((fields[0].name, fields[1].type))
+    rfields.append((fields[1].name, fields[1].type))
     for row in inj.resultset.rows:
         #collectgarbage("collect") #- trigger a full GC
         #--
         #- if something goes wrong 'row' will reference a free()ed old resultset now
         #- leading to nil here
-        proxy.response.resultset.rows.append((row[0], row[1]))
+        rrows.append((row[0], row[1]))
+
+    proxy.response = {
+        'type' : proxy.MYSQLD_PACKET_OK,
+        'resultset' : {
+            'fields' : rfields,
+            'rows' : rrows,
+        }
+    }
 
     return proxy.PROXY_SEND_RESULT

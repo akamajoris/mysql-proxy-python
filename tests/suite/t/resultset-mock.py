@@ -48,7 +48,7 @@ def read_query(proxy, packet):
 				'fields' : (
 					('1', proxy.MYSQL_TYPE_STRING),
 				),
-				'rows' : ( (1, ), )
+				'rows' : [[1]],
 			}
 		}
 	elif query == 'SELECT ':
@@ -131,26 +131,26 @@ def read_query(proxy, packet):
 		#-
 		proxy.response.type = proxy.MYSQLD_PACKET_RAW
 		proxy.response.packets = (
-			"\001",  #-- one field
-			"\003def" +   #- catalog
-			  "\0" +    #- db 
-			  "\0" +    #- table
-			  "\0" +    #- orig-table
-			  "\0011" + #- name
-			  "\0" +    #- orig-name
-			  "\f" +    #- filler
-			  "\010\0" + #- charset
-			  " \0\0\0" + #- length
-			  "\003" +    #- type
-			  "\002\0" +  #- flags 
-			  "\0" +    #- decimals
-			  "\0\0",    #- filler
+			"\x01",  #-- one field
+			"\x03def" +   #- catalog
+			  "\x00" +    #- db
+			  "\x00" +    #- table
+			  "\x00" +    #- orig-table
+			  "\x011" + #- name
+			  "\x00" +    #- orig-name
+			  "\x0c" +    #- filler
+			  "\x0a\x00" + #- charset
+			  " \x00\x00\x00" + #- length
+			  "\x03" +    #- type
+			  "\x02\x00" +  #- flags
+			  "\x00" +    #- decimals
+			  "\x00\x00",    #- filler
 
 			"\xfe", #- EOF
-			"\0011",
-			"\xfe\0\0\002\0"  #- no data EOF
+			"\x011",
+			"\xfe\x00\x00\x02\x00"  #- no data EOF
 		)
-		
+
 		return proxy.PROXY_SEND_RESULT
 
 	else:

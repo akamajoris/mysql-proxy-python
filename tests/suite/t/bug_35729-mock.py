@@ -48,10 +48,8 @@ def read_query(proxy, packet):
                 ( "Name", proxy.MYSQL_TYPE_STRING ),
                 ( "Value", proxy.MYSQL_TYPE_STRING )
             ),
-            'rows' : []
+            'rows' : zip(xrange(1, 5), xrange(1, 5)),
         }
     }
 
-    for i in xrange(1, 5):
-        proxy.response.resultset.rows.append(( str(i), str(i)))
     return proxy.PROXY_SEND_RESULT

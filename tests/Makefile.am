@@ -12,10 +12,7 @@ TESTS_ENVIRONMENT = \
     builddir=${builddir} \
     srcdir=${srcdir}/ \
     BUILD_OS=${build} \
-	LD_LIBRARY_PATH=/home/ray/project/python-dev/Python-2.5.5/build:/home/ray/project/python-dev/Python-2.5.5/build/Modules \
 	${srcdir}/run-tests.lua
-
-#${builddir}/lua-runner ${srcdir}/run-tests.lua
 
 
 TESTS=suite

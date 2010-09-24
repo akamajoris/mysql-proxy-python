@@ -64,7 +64,9 @@ def read_query(proxy, packet):
 		fields.append((str(i), proxy.MYSQL_TYPE_STRING))
 		#proxy.response.resultset.rows[1][i] = "1"
 		row.append("i")
-	proxy.response.resultset.fields = fields
-	proxy.response.resultset.rows = (row, )
+	proxy.response.resultset = {
+		'fields' : fields,
+		'rows' : [row],
+	}
 
 	return proxy.PROXY_SEND_RESULT
