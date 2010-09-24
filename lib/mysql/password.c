@@ -17,7 +17,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  LICENSE END */
 
- 
 
 /**
  * expose the chassis functions into the lua space
@@ -129,6 +128,7 @@ static PyMethodDef password_methods[] = {
 	{"scramble", python_password_scramble, METH_VARARGS, ""},
 	{"unscramble", python_password_unscramble, METH_VARARGS, ""},
 	{"check", python_password_check, METH_VARARGS, ""},
+	{0}
 };
 
 #ifndef PyMODINIC_FUNC
@@ -138,5 +138,6 @@ static PyMethodDef password_methods[] = {
 PyMODINIT_FUNC initpassword(void){
 	if(init_objects())
 		return;
+	g_critical("Now begin init module");
 	Py_InitModule("mysql.password", password_methods);
 }
