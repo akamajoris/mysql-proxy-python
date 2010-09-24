@@ -17,20 +17,14 @@
 #
 ## LICENSE END
 
---[[
-
-   
-
---]]
-
--- 
+--
 -- Debug
 --
 
 ---
 -- read_query() gets the client query before it reaches the server
 --
--- we want to inject the query be able to dump its content in the 
+-- we want to inject the query be able to dump its content in the
 -- read_query_result() call
 --
 -- @see read_query_result
