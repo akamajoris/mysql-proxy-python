@@ -1,0 +1,7 @@
+SELECT backtrace;
+backtrace
+Traceback (most recent call last):
+  File "/tmp/dummy.py", line 28, in read_query
+    raise Exception("test")
+Exception: test
+

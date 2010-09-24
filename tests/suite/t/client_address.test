@@ -1,0 +1,16 @@
+--disable_query_log
+value, errmsg = proxy.connection.client.dst.name.split(':')[0] == '127.0.0.1', proxy.connection.client.dst.name;
+value, errmsg = proxy.connection.client.dst.type == 2, proxy.connection.client.dst.type;
+value, errmsg = proxy.connection.client.dst.address == '127.0.0.1', proxy.connection.client.dst.address;
+value, errmsg = proxy.connection.client.src.name != None, None;
+value, errmsg = proxy.connection.client.src.type == 2, proxy.connection.client.src.type;
+value, errmsg = proxy.connection.client.src.address == '127.0.0.1', proxy.connection.client.src.address;
+value, errmsg = proxy.connection.client.src.port != None, None;
+value, errmsg = proxy.connection.server.dst.name.split(':')[0] == '127.0.0.1', proxy.connection.server.dst.name;
+value, errmsg = proxy.connection.server.dst.type == 2, None;
+value, errmsg = proxy.connection.server.dst.address == '127.0.0.1', proxy.connection.server.dst.address;
+value, errmsg = proxy.connection.server.src.name != None, None;
+value, errmsg = proxy.connection.server.src.type == 2, proxy.connection.server.src.type;
+value, errmsg = proxy.connection.server.src.address == '127.0.0.1', proxy.connection.server.src.address;
+value, errmsg = proxy.connection.server.src.port != None, None;
+

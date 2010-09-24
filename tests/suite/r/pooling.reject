@@ -1,0 +1,15 @@
+SELECT counter;
+conn_id	stmt_id
+2	1
+SELECT counter;
+conn_id	stmt_id
+3	2
+SELECT counter;
+conn_id	stmt_id
+4	3
+SELECT counter;
+conn_id	stmt_id
+5	4
+SELECT counter;
+conn_id	stmt_id
+5	5

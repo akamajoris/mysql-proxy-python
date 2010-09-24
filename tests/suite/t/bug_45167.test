@@ -1,0 +1,6 @@
+
+# well, change_user doesn't handler error, so we just ignore it
+# error 1105,S07000
+change_user foo;
+SELECT 1;
+

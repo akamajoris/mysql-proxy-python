@@ -1,0 +1,8 @@
+
+--
+-- starts a Proxy with faulty script and a mock-backend that ACKs our login
+--
+chain_proxy('bug_46141-mock.py','bug_46141-test.py')
+
+
+

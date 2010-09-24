@@ -1,0 +1,5 @@
+-- start two backends with the same script
+chain_proxy({ 'failover-mock.py', 'failover-mock.py' }, 'failover-test.py')
+
+
+

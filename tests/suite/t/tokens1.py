@@ -1,0 +1,69 @@
+import os, sys
+sys.path.append(os.environ['PYTHON_LIBPATH'])
+
+print sys.path
+
+import proxy.tokenizer as tk
+
+DEBUG = os.getenv('DEBUG') or 0
+DEBUG=DEBUG+0
+
+def print_debug(msg):
+    if DEBUG > 0:
+        print msg
+
+def packet_auth(fields = {}):
+    return "\x0a" +\
+        fields.get('version', "5.0.45-proxy") +\
+        "\x00" +\
+        "\x01\x00\x00\x00" +\
+        "\x41\x41\x41\x41" +\
+        "\x41\x41\x41\x41" +\
+        "\000" +             \
+        "\x01\x82" +         \
+        "\x08" +             \
+        "\x02\x00" +         \
+        "\x00"*13 +   \
+        "\x41\x41\x41\x41"+\
+        "\x41\x41\x41\x41"+\
+        "\x41\x41\x41\x41"+\
+        "\x00"
+
+def connect_server(proxy):
+	#- emulate a server
+	proxy.response = {
+		'type' : proxy.MYSQLD_PACKET_RAW,
+		'packets' : (
+			packet_auth(),
+		)
+	}
+	return proxy.PROXY_SEND_RESULT
+
+
+def read_query(proxy, packet):
+    if ord(packet[0]) != proxy.COM_QUERY:
+        print_debug('>>>>>> skipping')
+        proxy.response = { 'type' : proxy.MYSQLD_PACKET_OK }
+        return proxy.PROXY_SEND_RESULT
+    print_debug('>>>>>> after skipping')
+    query = packet[1:]
+    tokens = tk.tokenize(query)
+    stripped_tokens = tk.tokens_without_comments(tokens)
+    simple_tokens = tk.bare_tokens(stripped_tokens, True)
+    proxy.response.type = proxy.MYSQLD_PACKET_OK
+    proxy.response.resultset = {
+        'fields' : (
+            ('item', proxy.MYSQL_TYPE_STRING),
+            ('value', proxy.MYSQL_TYPE_STRING),
+        ),
+        'rows' : (
+            ( 'original', query ),
+            ( 'rebuilt', tk.tokens_to_query(tokens) )
+        )
+    }
+
+    print_debug('>>>>>> returning')
+    return proxy.PROXY_SEND_RESULT
+
+def disconnect_client(proxy):
+	print_debug('>>>>>> end session')
