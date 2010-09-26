@@ -365,7 +365,6 @@ static network_mysqld_python_stmt_ret proxy_python_read_handshake(network_mysqld
  *       intercept or parse them.
  */
 NETWORK_MYSQLD_PLUGIN_PROTO(proxy_read_handshake) {
-    //g_critical("proxy_read_handshake");
 	network_packet packet;
 	network_socket *recv_sock, *send_sock;
 	network_mysqld_auth_challenge *challenge;
@@ -483,8 +482,6 @@ static network_mysqld_python_stmt_ret proxy_python_read_auth(network_mysqld_con 
 }
 
 NETWORK_MYSQLD_PLUGIN_PROTO(proxy_read_auth) {
-    //g_critical("proxy_read_auth");
-
 	/* read auth from client */
 	network_packet packet;
 	network_socket *recv_sock, *send_sock;
@@ -692,7 +689,6 @@ static network_mysqld_python_stmt_ret proxy_python_read_auth_result(network_mysq
 
 
 NETWORK_MYSQLD_PLUGIN_PROTO(proxy_read_auth_result) {
-    //g_critical("proxy_read_auth_result");
 	GString *packet;
 	GList *chunk;
 	network_socket *recv_sock, *send_sock;
@@ -1543,14 +1539,14 @@ static GOptionEntry * network_mysqld_pyproxy_plugin_get_options(chassis_plugin_c
 	/* make sure it isn't collected */
 	static GOptionEntry config_entries[] = 
 	{
-		{ "pyproxy-address",            'P', 0, G_OPTION_ARG_STRING, NULL, "listening address:port of the pyproxy-server (default: :4040)", "<host:port>" },
+		{ "pyproxy-address",            'P', 0, G_OPTION_ARG_STRING, NULL, "listening address:port of the pyproxy-server (default: :4045)", "<host:port>" },
 		{ "pyproxy-read-only-backend-addresses", 
 					      'r', 0, G_OPTION_ARG_STRING_ARRAY, NULL, "address:port of the remote slave-server (default: not set)", "<host:port>" },
 		{ "pyproxy-backend-addresses",  'b', 0, G_OPTION_ARG_STRING_ARRAY, NULL, "address:port of the remote backend-servers (default: 127.0.0.1:3306)", "<host:port>" },
 		
 		{ "pyproxy-skip-profiling",     0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, NULL, "disables profiling of queries (default: enabled)", NULL },
 
-		{ "pyproxy-fix-bug-25371",      0, 0, G_OPTION_ARG_NONE, NULL, "fix bug #25371 (mysqld > 5.1.12) for older libmysql versions", NULL },
+		//{ "pyproxy-fix-bug-25371",      0, 0, G_OPTION_ARG_NONE, NULL, "fix bug #25371 (mysqld > 5.1.12) for older libmysql versions", NULL },
 		{ "pyproxy-python-script",         's', 0, G_OPTION_ARG_FILENAME, NULL, "filename of the python script (default: not set)", "<file>" },
 		
 		{ "no-pyproxy",                 0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, NULL, "don't start the pyproxy-module (default: enabled)", NULL },
@@ -1567,7 +1563,7 @@ static GOptionEntry * network_mysqld_pyproxy_plugin_get_options(chassis_plugin_c
 
 	config_entries[i++].arg_data = &(config->profiling);
 
-	config_entries[i++].arg_data = &(config->fix_bug_25371);
+	//config_entries[i++].arg_data = &(config->fix_bug_25371);
 	config_entries[i++].arg_data = &(config->python_script);
 	config_entries[i++].arg_data = &(config->start_proxy);
 	config_entries[i++].arg_data = &(config->pool_change_user);

@@ -279,12 +279,11 @@ Proxy_get_globals(Proxy *p, void *closure){
 	return p->globals;
 }
 
-//a borrowed reference.
 static PyObject *
 Proxy_get_queries(Proxy *p, void *closure){
 	return Queries_New(((network_mysqld_con_python_t*)p->con->plugin_con_state)->injected.queries);
 }
-//a borrowed reference.
+
 static PyObject *
 Proxy_get_response(Proxy *p, void *closure){
 	Py_INCREF(p->response);
@@ -424,6 +423,7 @@ PyObject *Proxy_New(network_mysqld_con *con){
 	proxy->globals = NULL;
 	return (PyObject *)proxy;
 }
+
 //------------------------------------Queue------------------------------
 static PyObject *
 Queue_get_cur_idle_connections(Queue *queue, void *closure){
@@ -1820,7 +1820,6 @@ int init_python_types(void){
 	PyThreadState *tstate = PyThreadState_GET();
 	PyObject *sd = tstate->interp->builtins;
 	//What is this?
-	//PyDict_SetItemString(sd, "ResponseResultset", (PyObject*)&ResponseResultset_Type);
 	PyDict_SetItemString(sd, "proxy", proxy_constants);
 	Py_DECREF(proxy_constants);
 

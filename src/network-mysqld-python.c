@@ -153,7 +153,6 @@ int network_mysqld_python_initialize(chassis_plugin_config *config){
 		LOAD_FUNC(read_auth_result)
 		LOAD_FUNC(read_query)
 		LOAD_FUNC(read_query_result)
-		LOAD_FUNC(send_query_result)
 		LOAD_FUNC(disconnect_client)
 
 		Py_DECREF(script_mod);
