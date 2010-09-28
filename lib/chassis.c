@@ -47,7 +47,8 @@ python_chassis_set_shutdown (PyObject *self, PyObject *args) {
  * helper function to set GHashTable key, value pairs in a Lua table
  * assumes to have a table on top of the stack.
  */
-static void chassis_stats_setpythonval(gpointer key, gpointer val, gpointer dict) {
+static void chassis_stats_setpythonval(gpointer key, gpointer val,
+			gpointer dict) {
     const gchar *name = key;
     const guint value = GPOINTER_TO_UINT(val);
 	PyDict_SetItemString((PyObject*)dict, name, PyInt_FromLong(value));
@@ -56,11 +57,14 @@ static void chassis_stats_setpythonval(gpointer key, gpointer val, gpointer dict
 /**
  * Expose the plugin stats hashes to Lua for post-processing.
  *
- * Lua parameters: plugin name to fetch stats for (or "chassis" for only getting the global ones)
- *                 might be omitted, then this function gets stats for all plugins, including the chassis
- * Lua return values: nil if the plugin is not loaded
- *                    a table with the stats when given one plugin name
- *                    a table with the plugin names as keys and their values as subtables, the chassis global stats are keyed as "chassis"
+ * Python parameters: plugin name to fetch stats for
+ *    (or "chassis" for only getting the global ones)
+ *    might be omitted, then this function gets stats for all plugins,
+ *    including the chassis
+ * Python return values: nil if the plugin is not loaded
+ *    a table with the stats when given one plugin name
+ *    a table with the plugin names as keys and their values as subtables,
+ *    the chassis global stats are keyed as "chassis"
  */
 static PyObject *
 python_chassis_stats(PyObject *self, PyObject *args) {
@@ -82,66 +86,68 @@ python_chassis_stats(PyObject *self, PyObject *args) {
 	if(!result)
 		return NULL;
 
-    if (chas && chas->modules) {
-        for (i = 0; i < chas->modules->len; i++) {
-            plugin = chas->modules->pdata[i];
-            if (plugin->stats != NULL && plugin->get_stats != NULL) {
-                GHashTable *stats_hash = NULL;
+    if (!chas || !chas->modules)
+		goto done;
+	for (i = 0; i < chas->modules->len; i++) {
+		plugin = chas->modules->pdata[i];
+		if (!plugin->stats || !plugin->get_stats)
+			continue;
 
-                if (plugin_name == NULL) {
-                    /* grab all stats and key them by plugin name */
-                    stats_hash = plugin->get_stats(plugin->stats);
-                    if (stats_hash != NULL) {
-                        found_stats = TRUE;
-                    }
+		GHashTable *stats_hash = NULL;
 
-					PyObject *dict = PyDict_New();
-					if(!dict)
-						return NULL;
+		if (plugin_name == NULL) {
+			/* grab all stats and key them by plugin name */
+			stats_hash = plugin->get_stats(plugin->stats);
+			if (stats_hash != NULL) {
+				found_stats = TRUE;
+			}
 
-                    g_hash_table_foreach(stats_hash, chassis_stats_setpythonval, dict);
-					PyDict_SetItemString(result, plugin->name, dict);
-					Py_DECREF(dict);
+			PyObject *dict = PyDict_New();
+			if(!dict)
+				return NULL;
 
-                    g_hash_table_destroy(stats_hash);
+			g_hash_table_foreach(stats_hash, chassis_stats_setpythonval, dict);
+			PyDict_SetItemString(result, plugin->name, dict);
+			Py_DECREF(dict);
 
-                } else if (g_ascii_strcasecmp(plugin_name, "chassis") == 0) {
-                  /* get the global chassis stats */
-                    stats_hash = chassis_stats_get(chas->stats);
-                    if (stats_hash == NULL) {
-                        found_stats = FALSE;
-                        break;
-                    }
-                    found_stats = TRUE;
+			g_hash_table_destroy(stats_hash);
 
-					PyObject *dict = PyDict_New();
-					if(!dict)
-						return NULL;
+		} else if (g_ascii_strcasecmp(plugin_name, "chassis") == 0) {
+		  /* get the global chassis stats */
+			stats_hash = chassis_stats_get(chas->stats);
+			if (stats_hash == NULL) {
+				found_stats = FALSE;
+				break;
+			}
+			found_stats = TRUE;
 
-                    g_hash_table_foreach(stats_hash, chassis_stats_setpythonval, dict);
-                    g_hash_table_destroy(stats_hash);
-					return dict;
-                    //break;
-                } else if (g_ascii_strcasecmp(plugin_name, plugin->name) == 0) {
-                    /* check for the correct name and get the stats */
-                    stats_hash = plugin->get_stats(plugin->stats);
-                    if (stats_hash == NULL) {
-                        found_stats = FALSE;
-                        break;
-                    }
-                    found_stats = TRUE;
+			PyObject *dict = PyDict_New();
+			if(!dict)
+				return NULL;
 
-					PyObject *dict = PyDict_New();
-					if(!dict)
-						return NULL;
-                    /* the table to use is already on the stack */
-                    g_hash_table_foreach(stats_hash, chassis_stats_setpythonval, dict);
-                    g_hash_table_destroy(stats_hash);
-					return dict;
-                }
-            }
-        }
-    }
+			g_hash_table_foreach(stats_hash, chassis_stats_setpythonval, dict);
+			g_hash_table_destroy(stats_hash);
+			return dict;
+			//break;
+		} else if (g_ascii_strcasecmp(plugin_name, plugin->name) == 0) {
+			/* check for the correct name and get the stats */
+			stats_hash = plugin->get_stats(plugin->stats);
+			if (stats_hash == NULL) {
+				found_stats = FALSE;
+				break;
+			}
+			found_stats = TRUE;
+
+			PyObject *dict = PyDict_New();
+			if(!dict)
+				return NULL;
+			/* the table to use is already on the stack */
+			g_hash_table_foreach(stats_hash, chassis_stats_setpythonval, dict);
+			g_hash_table_destroy(stats_hash);
+			return dict;
+		}
+	}
+done:
     if(!found_stats)
 		Py_RETURN_NONE;
     return result;
@@ -182,8 +188,8 @@ python_chassis_log(PyObject *self, PyObject *args) {
 		return NULL;
 	if(!PyArg_ParseTuple(args, "ss", &level, &message))
 		return NULL;
-	static const int log_level_values[] = {G_LOG_LEVEL_ERROR, G_LOG_LEVEL_CRITICAL,
-        G_LOG_LEVEL_WARNING, G_LOG_LEVEL_MESSAGE,
+	static const int log_level_values[] = {G_LOG_LEVEL_ERROR,
+		G_LOG_LEVEL_CRITICAL, G_LOG_LEVEL_WARNING, G_LOG_LEVEL_MESSAGE,
         G_LOG_LEVEL_INFO, G_LOG_LEVEL_DEBUG};
 	PyObject *lvl = PyString_FromString(level);
 	if(!lvl)
@@ -227,7 +233,8 @@ python_g_mem_profile(PyObject *self, PyObject *args) {
 	Py_RETURN_NONE;
 }
 
-#define CHASSIS_PYTHON_LOG_FUNC(level, LEVEL) {#level, (PyCFunction)python_chassis_log_ ## LEVEL, METH_VARARGS, ""}
+#define CHASSIS_PYTHON_LOG_FUNC(level, LEVEL) \
+	{#level, (PyCFunction)python_chassis_log_ ## LEVEL, METH_VARARGS, ""}
 
 static PyMethodDef chassis_methods[] = {
 	{"set_shutdown", (PyCFunction)python_chassis_set_shutdown, METH_NOARGS, ""},

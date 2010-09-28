@@ -221,33 +221,22 @@ PYTHON_LDFLAGS=""
 AC_MSG_CHECKING(for python support)
 AC_ARG_WITH(python,
     AC_HELP_STRING([--with-python@<:@=PYTHON_VERSION@:>@],[Include Python support. PYTHON_VERSION is like 'python2.x']),
-    [WITH_PYTHON=$withval],[WITH_PYTHON=yes])
+    [WITH_PYTHON=$withval],[WITH_PYTHON=])
 
-if test "$WITH_PYTHON" = "no"; then
+if test -z "$WITH_PYTHON"; then
   AC_MSG_ERROR([python support is required, use --with-python=python2.x])
 else
   AC_DEFINE_UNQUOTED([PYTHON_VERSION], ["$WITH_PYTHON"], [python version])
 fi
 
-AC_MSG_RESULT(yes)  
-if test "$WITH_PYTHON" = "yes"; then
-  AC_PATH_PROG(PYTHON_CONFIG, python-config)
-else
-  PYTHON_CONFIG="$WITH_PYTHON-config"
-fi
+AC_MSG_RESULT(yes)
 
-if test "$PYTHON_CONFIG" = ""; then
-  AC_MSG_ERROR([$WITH_PYTHON-config is not found])
-fi
+PYTHON_CONFIG="$WITH_PYTHON-config"
 
 PYTHON_INCLUDES="`$PYTHON_CONFIG --includes | sed s/\'//g`"
 PYTHON_CFLAGS="`$PYTHON_CONFIG --cflags | sed s/\'//g`"
 PYTHON_LIBS="`$PYTHON_CONFIG --libs | sed s/\'//g`"
 PYTHON_LDFLAGS="`$PYTHON_CONFIG --ldflags | sed s/\'//g`"
-
-#Trick
-#PYTHON_LDFLAGS=" -Wl,-R/home/ray/project/python-dev/Python-2.5.5/build -Wl,-R/home/ray/project/python-dev/Python-2.5.5/build/build/lib.linux-i686-2.5 -L/home/ray/project/python-dev/Python-2.5.5/build -L/home/ray/project/python-dev/Python-2.5.5/build/build/lib.linux-i686-2.5 -lpthread -ldl -lutil -lm -lpython2.5 "
-#PYTHON_CFLAGS=" -I/home/ray/project/python-dev/Python-2.5.5/build -I/home/ray/project/python-dev/Python-2.5.5/Include -fno-strict-aliasing -g -fwrapv -O2 -Wall -Wstrict-prototypes "
 
 AC_MSG_CHECKING(for Python includes =)
 AC_MSG_RESULT($PYTHON_INCLUDES)
@@ -295,6 +284,31 @@ AC_MSG_RESULT([$MYSQL_LIBS])
 AC_SUBST(MYSQL_TEST_BIN)
 AC_SUBST(MYSQL_LIBS)
 AC_SUBST(MYSQL_CFLAGS)
+
+
+
+dnl Check for mysql-proxy-0.8.0 source.
+AC_MSG_CHECKING(for mysql-proxy-0.8.0 source)
+AC_ARG_WITH(mysql-proxy-src,
+    AC_HELP_STRING([--with-mysql-proxy-src@<:@=MYSQL_PROXY_SOURCE@:>@],[Source directory of mysql proxy, if you have source.]),
+    [MYSQL_PROXY_SOURCE=$withval],[MYSQL_PROXY_SOURCE=])
+
+if test -z "$MYSQL_PROXY_SOURCE"; then
+	AC_MSG_WARN([
+				 In order to get better support for python scripting, 
+				 you'd better have a mysql-proxy source, and use 
+				 with-mysql-proxy-src=path-to-mysql-proxy-source-directory
+  ])
+else
+	if test -d "$MYSQL_PROXY_SOURCE"; then
+	  AC_MSG_RESULT(yes)
+	  AC_SUBST(MYSQL_PROXY_SOURCE)
+	else
+	  AC_MSG_ERROR([$MYSQL_PROXY_SOURCE is not found])
+	fi
+fi
+
+
 
 dnl Check for pkg-config
 if test -z "$PKG_CONFIG"; then

@@ -281,7 +281,8 @@ Proxy_get_globals(Proxy *p, void *closure){
 
 static PyObject *
 Proxy_get_queries(Proxy *p, void *closure){
-	return Queries_New(((network_mysqld_con_python_t*)p->con->plugin_con_state)->injected.queries);
+	network_mysqld_con_python_t * con_state = p->con->plugin_con_state;
+	return Queries_New(con_state->injected.queries);
 }
 
 static PyObject *
@@ -303,7 +304,8 @@ Proxy_set_response(Proxy *p, PyObject *value, void *closure){
 	while(PyDict_Next(value, &pos, &key, &v)){
 		/* do something interesting with the values... */
 		if(!PyString_Check(key)){
-			PyErr_SetString(PyExc_ValueError, "response dict's keys can only be strings");
+			PyErr_SetString(PyExc_ValueError, "response dict's keys can only "
+						"be strings");
 			return -1;
 		}
 		PyObject_SetAttr(p->response, key, v);
@@ -410,6 +412,17 @@ static PyMemberDef Proxy_members[] = {{0}};
 
 PY_TYPE_DEF(Proxy)
 
+static void
+Proxy_dealloc(Proxy* self){
+    Py_DECREF(self->response);
+    Py_DECREF(self->queries);
+    self->ob_type->tp_free((PyObject*)self);
+}
+
+static void Proxy_Type_Ready(void){
+	Proxy_Type.tp_dealloc = (destructor)Proxy_dealloc;
+}
+
 PyObject *Proxy_New(network_mysqld_con *con){
 	Proxy *proxy = (Proxy*)PyObject_New(Proxy, &Proxy_Type);
 	if(!proxy)
@@ -446,7 +459,7 @@ Queue_New(GQueue *q){
 	queue->queue = q;
 	return (PyObject*)queue;
 }
-//-----------------------------Users-----------------------------
+//-----------------------------Users--------------------------------------
 static PyMethodDef Users_methods[] = {{0}};
 static PyMemberDef Users_members[] = {{0}};
 static PyGetSetDef Users_getsets[] = {{0}};
@@ -488,7 +501,7 @@ PyObject *Users_New(network_connection_pool *pool){
 	users->pool = pool;
 	return (PyObject *)users;
 }
-//------------------------------------ConnectionPool------------------------------
+//-------------------------------ConnectionPool-----------------------------
 static PyObject *
 ConnectionPool_get_min_idle_connections(ConnectionPool *pool, void *closure){
 	return PyInt_FromLong(pool->pool->min_idle_connections);
@@ -599,10 +612,12 @@ static int
 Backend_set_uuid(Backend *b, PyObject *value, void *closure){
 	assert(value);
 	if(!PyString_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "backend.uuid can only be assigned to string.");
+		PyErr_SetString(PyExc_ValueError, "backend.uuid can only be assigned "
+					"to string.");
 		return -1;
 	}
-	g_string_assign_len(b->backend->uuid, PyString_AsString(value), PyString_Size(value));
+	g_string_assign_len(b->backend->uuid, PyString_AsString(value),
+				PyString_Size(value));
 	return 0;
 }
 
@@ -665,7 +680,8 @@ Address_get_address(Address *address, void *closure){
 		break;
 #ifdef HAVE_INET_NTOP
 	case AF_INET6:
-		str = inet_ntop(addr->addr.common.sa_family, &addr->addr.ipv6.sin6_addr, dst_addr, sizeof(dst_addr));
+		str = inet_ntop(addr->addr.common.sa_family, &addr->addr.ipv6.sin6_addr,
+					dst_addr, sizeof(dst_addr));
 		break;
 #endif
 #ifndef WIN32
@@ -699,6 +715,7 @@ PyObject *Address_New(network_address *addr){
 	address->address = addr;
 	return (PyObject *)address;
 }
+
 //------------------------------------Config------------------------------
 
 #define CONFIG_GETTER_MEMBER_STRING_DEF(name) \
@@ -780,7 +797,7 @@ PyObject *Config_New(chassis_plugin_config *config){
 	}
 	for(j = 0; j < i; j++)
 		PyTuple_SetItem(conf->read_only_backend_addresses, j,
-					PyString_FromString(config->read_only_backend_addresses[j]));
+				PyString_FromString(config->read_only_backend_addresses[j]));
 	conf->dict = PyDict_New();
 	if(!conf->dict){
 		Py_DECREF(conf);
@@ -788,7 +805,7 @@ PyObject *Config_New(chassis_plugin_config *config){
 	}
 	return (PyObject *)conf;
 }
-//------------------------------------Globals------------------------------
+//------------------------------------Globals---------------------------------
 static PyObject *
 Globals_get_config(Globals *g, void *closure){
 	//return Config_New(g->config);
@@ -823,7 +840,8 @@ static void Globals_Type_Ready(void){
 	Globals_Type.tp_setattro = PyObject_GenericSetAttr;
 	Globals_Type.tp_dictoffset = offsetof(Globals, dict);
 }
-PyObject *Globals_New(chassis_plugin_config* config, network_backends_t *backends){
+PyObject *Globals_New(chassis_plugin_config* config,
+			network_backends_t *backends){
 	int i;
 	Globals *global = PyObject_New(Globals, &Globals_Type);
 	if(!global)
@@ -855,7 +873,8 @@ Connection_get_server(Connection *c, void *closure){
 }
 static PyObject *
 Connection_get_backend_ndx(Connection *c, void *closure){
-	return PyInt_FromLong(((network_mysqld_con_python_t *)c->con->plugin_con_state)->backend_ndx);
+	network_mysqld_con_python_t *con_state = c->con->plugin_con_state;
+	return PyInt_FromLong(con_state->backend_ndx);
 }
 static int
 Connection_set_backend_ndx(Connection *c, PyObject *value, void *closure){
@@ -870,7 +889,8 @@ Connection_set_backend_ndx(Connection *c, PyObject *value, void *closure){
 	network_mysqld_con_python_t * st = c->con->plugin_con_state;
 	if(be_ndx == -1)
 		network_connection_pool_python_add_connection(c->con);
-	else if(NULL != (send_sock = network_connection_pool_python_swap(c->con, be_ndx)))
+	else if(NULL != (send_sock =
+					network_connection_pool_python_swap(c->con, be_ndx)))
 		c->con->server = send_sock;
 	else
 		st->backend_ndx = be_ndx;
@@ -879,12 +899,14 @@ Connection_set_backend_ndx(Connection *c, PyObject *value, void *closure){
 
 static PyObject *
 Connection_get_connection_close(Connection *conn, void *closure){
-	PyErr_SetString(PyExc_ValueError, "connection.connection_close can only be set");
+	PyErr_SetString(PyExc_ValueError,
+				"connection.connection_close can only be set");
 	return NULL;
 }
 
 static int
-Connection_set_connection_close(Connection *conn, PyObject *value, void *closure){
+Connection_set_connection_close(Connection *conn, PyObject *value,
+			void *closure){
 	assert(value);
 	if(!PyInt_Check(value)){
 		PyErr_SetString(PyExc_ValueError, "connection.connection_close can "
@@ -1045,10 +1067,12 @@ Backends_New(network_backends_t *backends){
 GETTER_MEMBER_DEF(ResponseResultset, fields)
 GETTER_MEMBER_DEF(ResponseResultset, rows)
 static int
-ResponseResultset_set_fields(ResponseResultset *rr, PyObject *value, void *closure){
+ResponseResultset_set_fields(ResponseResultset *rr, PyObject *value,
+			void *closure){
 	assert(value);
 	if(!PySequence_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "resultset.fields can only be set to sequence");
+		PyErr_SetString(PyExc_ValueError,
+					"resultset.fields can only be set to sequence");
 		return -1;
 	}
 	Py_INCREF(value);
@@ -1056,10 +1080,12 @@ ResponseResultset_set_fields(ResponseResultset *rr, PyObject *value, void *closu
 	return 0;
 }
 static int
-ResponseResultset_set_rows(ResponseResultset *rr, PyObject *value, void *closure){
+ResponseResultset_set_rows(ResponseResultset *rr, PyObject *value,
+			void *closure){
 	assert(value);
 	if(!PySequence_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "resultset.rows can only be set to sequence");
+		PyErr_SetString(PyExc_ValueError,
+					"resultset.rows can only be set to sequence");
 		return -1;
 	}
 	Py_INCREF(value);
@@ -1078,7 +1104,8 @@ PY_TYPE_DEF(ResponseResultset)
 
 PyObject *
 ResponseResultset_New(PyObject *fields, PyObject *rows){
-	ResponseResultset *rr = (ResponseResultset *)PyObject_New(ResponseResultset, &ResponseResultset_Type);
+	ResponseResultset *rr = (ResponseResultset *)PyObject_New(ResponseResultset,
+				&ResponseResultset_Type);
 	if(!rr)
 		return NULL;
 	if(!PySequence_Check(fields)){
@@ -1101,151 +1128,14 @@ static PyObject *\
 Response_get_ ## name(Response *r, void *closure){\
 	PyObject *res = PyDict_GetItemString(r->dict, #name);\
 	if(!res){\
-		PyErr_SetString(PyExc_AttributeError, "Response object has no attribute " #name);\
+		PyErr_SetString(PyExc_AttributeError,\
+					"Response object has no attribute " #name);\
 		return NULL;\
 	}\
 	Py_INCREF(res);\
 	return res;\
 }
 
-/*
-RESPONSE_GETTER_MEMBER_DEF(type)
-RESPONSE_GETTER_MEMBER_DEF(errcode)
-RESPONSE_GETTER_MEMBER_DEF(errmsg)
-RESPONSE_GETTER_MEMBER_DEF(sqlstate)
-RESPONSE_GETTER_MEMBER_DEF(resultset)
-RESPONSE_GETTER_MEMBER_DEF(packets)
-RESPONSE_GETTER_MEMBER_DEF(affected_rows)
-RESPONSE_GETTER_MEMBER_DEF(insert_id)
-
-static int
-Response_set_type(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PyInt_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "response.type can only be "
-					"assigned to a int");
-		return -1;
-	}
-	if(PyDict_SetItemString(r->dict, "type", value))
-		return -1;
-	return 0;
-}
-
-static int
-Response_set_errcode(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PyInt_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "response.errcode can only be "
-					"assigned to a int");
-		return -1;
-	}
-	if(PyDict_SetItemString(r->dict, "errcode", value))
-		return -1;
-	return 0;
-}
-static int
-Response_set_errmsg(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PyString_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "response.errmsg can only be "
-					"assigned to a string");
-		return -1;
-	}
-	if(PyDict_SetItemString(r->dict, "errmsg", value))
-		return -1;
-	return 0;
-}
-
-static int
-Response_set_sqlstate(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PyString_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "response.sqlstate can only be "
-					"assigned to a string");
-		return -1;
-	}
-	if(PyDict_SetItemString(r->dict, "sqlstate", value))
-		return -1;
-	return 0;
-}
-
-static int
-Response_set_resultset(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PyDict_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "response.resultset can only be "
-					"assigned to a dict with keys 'fields' and 'rows'");
-		return -1;
-	}
-	PyObject *fields = PyDict_GetItemString(value, "fields");
-	PyObject *rows = PyDict_GetItemString(value, "rows");
-
-	if(!fields || !rows){
-		PyErr_SetString(PyExc_ValueError, "response.resultset must have fields and rows");
-		return -1;
-	}
-	PyObject *rr = ResponseResultset_New(fields, rows);
-	if(!rr)
-		return -1;
-	if(PyDict_SetItemString(r->dict, "resultset", rr)){
-		Py_DECREF(rr);
-		return -1;
-	}
-	Py_DECREF(rr);
-
-	return 0;
-}
-
-static int
-Response_set_packets(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PySequence_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "resonse.packets should only be set to sequence of strings.");
-		return -1;
-	}
-	if(PyDict_SetItemString(r->dict, "packets", value))
-		return -1;
-	return 0;
-}
-
-static int
-Response_set_affected_rows(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PyInt_Check(value) && !PyLong_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "response.affected_rows can only be "
-					"assigned to a int");
-		return -1;
-	}
-	if(PyDict_SetItemString(r->dict, "affected_rows", value))
-		return -1;
-	return 0;
-}
-
-static int
-Response_set_insert_id(Response *r, PyObject *value, void *closure){
-	assert(value);
-	if(!PyInt_Check(value) && !PyLong_Check(value)){
-		PyErr_SetString(PyExc_ValueError, "response.insert_id can only be "
-					"assigned to a int");
-		return -1;
-	}
-	if(PyDict_SetItemString(r->dict, "insert_id", value))
-		return -1;
-	return 0;
-}
-
-static PyGetSetDef Response_getsets[] = {
-	GETSET_DECLEAR(Response, type)
-	GETSET_DECLEAR(Response, errcode)
-	GETSET_DECLEAR(Response, errmsg)
-	GETSET_DECLEAR(Response, sqlstate)
-	GETSET_DECLEAR(Response, resultset)
-	GETSET_DECLEAR(Response, packets)
-	GETSET_DECLEAR(Response, affected_rows)
-	GETSET_DECLEAR(Response, insert_id)
-	{0}
-};
-*/
 
 static PyGetSetDef Response_getsets[] = {{0}};
 static PyMemberDef Response_members[] = {{0}};
@@ -1418,7 +1308,8 @@ ProxyRowIter_iternext(ProxyRowIter *pri){
 	for (i = 0; i < fields->len; i++) {
 		guint64 field_len;
 
-		err = err || network_mysqld_proto_peek_lenenc_type(&packet, &lenenc_type);
+		err = err || network_mysqld_proto_peek_lenenc_type(&packet,
+					&lenenc_type);
 		if(err){
 			PyErr_SetString(PyExc_ValueError, "protocol error!");
 			return NULL;
@@ -1430,14 +1321,20 @@ ProxyRowIter_iternext(ProxyRowIter *pri){
 			PyTuple_SetItem(result, i, Py_None);
 			break;
 		case NETWORK_MYSQLD_LENENC_TYPE_INT:
-			err = err || network_mysqld_proto_get_lenenc_int(&packet, &field_len);
-			err = err || !(field_len <= packet.data->len); /* just to check that we don't overrun by the addition */
-			err = err || !(packet.offset + field_len <= packet.data->len); /* check that we have enough string-bytes for the length-encoded string */
+			err = err || network_mysqld_proto_get_lenenc_int(&packet,
+						&field_len);
+			/* just to check that we don't overrun by the addition */
+			err = err || !(field_len <= packet.data->len);
+			/* check that we have enough string-bytes for the
+			 * length-encoded string
+			 */
+			err = err || !(packet.offset + field_len <= packet.data->len);
 			if(err){
 				PyErr_SetString(PyExc_ValueError, "row-data is invalid.");
 				return NULL;
 			}
-            PyTuple_SetItem(result, i, PyString_FromStringAndSize(packet.data->str + packet.offset, field_len));
+            PyTuple_SetItem(result, i, PyString_FromStringAndSize(
+							packet.data->str + packet.offset, field_len));
 
 			err = err || network_mysqld_proto_skip(&packet, field_len);
 			break;
@@ -1462,7 +1359,8 @@ static void ProxyRowIter_Type_Ready(void){
 }
 PyObject *
 ProxyRowIter_New(proxy_resultset_t *res){
-	ProxyRowIter *pri = (ProxyRowIter*)PyObject_New(ProxyRowIter, &ProxyRowIter_Type);
+	ProxyRowIter *pri = (ProxyRowIter*)PyObject_New(ProxyRowIter,
+				&ProxyRowIter_Type);
 	if(!pri)
 		return NULL;
 	pri->res = res;
@@ -1517,7 +1415,8 @@ static int parse_resultset_fields(proxy_resultset_t *res) {
 
 	if (!res->fields) return -1;
 
-	chunk = network_mysqld_proto_get_fielddefs(res->result_queue->head, res->fields);
+	chunk = network_mysqld_proto_get_fielddefs(res->result_queue->head,
+				res->fields);
 
 	/* no result-set found */
 	if (!chunk){
@@ -1534,11 +1433,13 @@ static int parse_resultset_fields(proxy_resultset_t *res) {
 static PyObject *
 InjectionResultset_get_rows(InjectionResultset *ir, void* closure){
 	if(!ir->res->result_queue){
-		PyErr_SetString(PyExc_ValueError, ".resultset.rows isn't available if resultset_is_needed ~= true");
+		PyErr_SetString(PyExc_ValueError, ".resultset.rows isn't available if "
+					"resultset_is_needed ~= true");
 		return NULL;
 	}
 	else if(ir->res->qstat.binary_encoded){
-		PyErr_SetString(PyExc_ValueError, ".resultset.rows isn't available for prepared statements");
+		PyErr_SetString(PyExc_ValueError, ".resultset.rows isn't available "
+					"for prepared statements");
 		return NULL;
 	}
 	if(0 != parse_resultset_fields(ir->res)){
@@ -1569,7 +1470,8 @@ InjectionResultset_get_bytes(InjectionResultset *ir, void* closure){
 static PyObject *
 InjectionResultset_get_raw(InjectionResultset *ir, void* closure){
 	if(!ir->res->result_queue){
-		PyErr_SetString(PyExc_ValueError, "resultset.raw isn't available if resultset_is_need ~= true");
+		PyErr_SetString(PyExc_ValueError, "resultset.raw isn't available if "
+					"resultset_is_need ~= true");
 		return NULL;
 	}
 	GString *s = ir->res->result_queue->head->data;
@@ -1601,7 +1503,8 @@ static PyObject *
 InjectionResultset_get_fields(InjectionResultset *ir, void *closure){
 	proxy_resultset_t *res = ir->res;
 	if(!res->result_queue){
-		PyErr_SetString(PyExc_AttributeError, "resultset.fields isn't available");
+		PyErr_SetString(PyExc_AttributeError,
+					"resultset.fields isn't available");
 		return NULL;
 	}
 	if(0 != parse_resultset_fields(res)){
@@ -1615,7 +1518,8 @@ InjectionResultset_get_fields(InjectionResultset *ir, void *closure){
 			return NULL;
 		int i;
 		for(i = 0; i < res->fields->len; i++)
-			PyTuple_SetItem(fields, i, ProxyField_New((MYSQL_FIELD*)g_ptr_array_index(res->fields, i)));
+			PyTuple_SetItem(fields, i, ProxyField_New(
+							(MYSQL_FIELD*)g_ptr_array_index(res->fields, i)));
 		return fields;
 	}
 	else {
@@ -1646,7 +1550,8 @@ static PyGetSetDef InjectionResultset_getsets[] = {
 PY_TYPE_DEF(InjectionResultset)
 PyObject *
 InjectionResultset_New(proxy_resultset_t *res){
-	InjectionResultset *ir = (InjectionResultset*)PyObject_New(InjectionResultset, &InjectionResultset_Type);
+	InjectionResultset *ir = (InjectionResultset*)PyObject_New(InjectionResultset,
+				&InjectionResultset_Type);
 	if(!ir)
 		return NULL;
 	ir->res = res;
@@ -1666,12 +1571,14 @@ Injection_get_query(Injection *i){
 static PyObject *
 Injection_get_query_time(Injection *i){
 	injection *inj = i->inj;
-	return PyInt_FromLong(chassis_calc_rel_microseconds(inj->ts_read_query, inj->ts_read_query_result_first));
+	return PyInt_FromLong(chassis_calc_rel_microseconds(inj->ts_read_query,
+					inj->ts_read_query_result_first));
 }
 static PyObject *
 Injection_get_response_time(Injection *i){
 	injection *inj = i->inj;
-	return PyInt_FromLong(chassis_calc_rel_microseconds(inj->ts_read_query, inj->ts_read_query_result_last));
+	return PyInt_FromLong(chassis_calc_rel_microseconds(inj->ts_read_query,
+					inj->ts_read_query_result_last));
 }
 static PyObject *
 Injection_get_resultset(Injection *i){

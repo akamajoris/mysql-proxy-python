@@ -156,12 +156,6 @@ def read_auth_result( proxy, auth ):
 	if ord((auth.packet)[0]) == proxy.MYSQLD_PACKET_OK :
 		#- auth was fine, disconnect from the server
 		proxy.connection.backend_ndx = 0
-	elif ord((auth.packet)[0]) == proxy.MYSQLD_PACKET_EOF :
-		#- we received either a
-		#-
-		#- * MYSQLD_PACKET_ERR and the auth failed or
-		#- * MYSQLD_PACKET_EOF which means a OLD PASSWORD (4.0) was sent
-		print "(read_auth_result) +. not ok yet"
 	elif ord((auth.packet)[0]) == proxy.MYSQLD_PACKET_ERR :
 		#- auth failed
 		pass

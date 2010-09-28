@@ -84,7 +84,8 @@ python_password_unscramble(PyObject *self, PyObject *args) {
 	const char *dbl_hashed_password;
 
 	if(!PyArg_ParseTuple(args, "s#s#s#", &challenge, &challenge_len, &response,
-					&response_len, &dbl_hashed_password, &dbl_hashed_password_len))
+					&response_len, &dbl_hashed_password,
+					&dbl_hashed_password_len))
 		return NULL;
 
 	GString *hashed_password = g_string_new(NULL);
@@ -111,7 +112,8 @@ python_password_check(PyObject *self, PyObject *args) {
 	const char *dbl_hashed_password;
 
 	if(!PyArg_ParseTuple(args, "s#s#s#", &challenge, &challenge_len, &response,
-					&response_len, &dbl_hashed_password, &dbl_hashed_password_len))
+					&response_len, &dbl_hashed_password,
+					&dbl_hashed_password_len))
 		return NULL;
 
 	int result = network_mysqld_proto_password_check(

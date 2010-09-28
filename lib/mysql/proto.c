@@ -138,9 +138,6 @@ python_proto_append_challenge_packet (PyObject *self, PyObject *args) {
 
 	PYTHON_IMPORT_STR(auth_challenge, challenge);
 
-//#undef PYTHON_IMPORT_INT
-//#undef PYTHON_IMPORT_STR
-
 	packet = g_string_new(NULL);
 	network_mysqld_proto_append_auth_challenge(packet, auth_challenge);
 

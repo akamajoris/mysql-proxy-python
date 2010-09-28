@@ -65,6 +65,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern PyObject *proxy_constants;
 
+/**
+ * need not gain GIL
+ */
 int network_mysqld_python_initialize(chassis_plugin_config *config){
     PyObject *path = PySys_GetObject("path");
 
@@ -100,7 +103,8 @@ int network_mysqld_python_initialize(chassis_plugin_config *config){
 			Py_DECREF(curr_path);
 		}
 		else{
-			g_critical("Script file path is too long! Max length is %d\n", MAX_PATH_LENGTH);
+			g_critical("Script file path is too long! Max length is %d\n",
+						MAX_PATH_LENGTH);
 			return -1;
 		}
 	}
@@ -166,40 +170,35 @@ int network_mysqld_python_initialize(chassis_plugin_config *config){
 
 network_mysqld_con_python_t *network_mysqld_con_python_new() {
 	network_mysqld_con_python_t *st;
-
 	st = g_new0(network_mysqld_con_python_t, 1);
-
 	st->injected.queries = network_injection_queue_new();
-
 	return st;
 }
 
 /**
- * handle the events of a idling server connection in the pool 
+ * handle the events of a idling server connection in the pool
  *
  * make sure we know about connection close from the server side
  * - wait_timeout
  */
-static void network_mysqld_con_idle_handle(int event_fd, short events, void *user_data) {
+static void network_mysqld_con_idle_handle(int event_fd, short events,
+			void *user_data) {
 	network_connection_pool_entry *pool_entry = user_data;
-	network_connection_pool *pool             = pool_entry->pool;
+	network_connection_pool *pool = pool_entry->pool;
 
 	if (events == EV_READ) {
 		int b = -1;
-
 		/**
-		 * @todo we have to handle the case that the server really sent use something
-		 *        up to now we just ignore it
+		 * @todo we have to handle the case that the server really sent use
+		 * something up to now we just ignore it
 		 */
 		if (ioctlsocket(event_fd, FIONREAD, &b)) {
-			g_critical("ioctl(%d, FIONREAD, ...) failed: %s", event_fd, g_strerror(errno));
+			g_critical("ioctl(%d, FIONREAD, ...) failed: %s", event_fd,
+						g_strerror(errno));
 		} else if (b != 0) {
-			g_critical("ioctl(%d, FIONREAD, ...) said there is something to read, oops: %d", event_fd, b);
+			g_critical("ioctl(%d, FIONREAD, ...) said there is something to "
+						"read, oops: %d", event_fd, b);
 		} else {
-			/* the server decided the close the connection (wait_timeout, crash, ... )
-			 *
-			 * remove us from the connection pool and close the connection */
-		
 			network_connection_pool_remove(pool, pool_entry);
 		}
 	}
@@ -210,7 +209,8 @@ int network_connection_pool_python_add_connection(network_mysqld_con *con) {
 	network_mysqld_con_python_t *st = con->plugin_con_state;
 
 	/* con-server is already disconnected, got out */
-	if (!con->server) return 0;
+	if (!con->server)
+		return 0;
 
 	/* the server connection is still authed */
 	con->server->is_authed = 1;
@@ -218,8 +218,10 @@ int network_connection_pool_python_add_connection(network_mysqld_con *con) {
 	/* insert the server socket into the connection pool */
 	pool_entry = network_connection_pool_add(st->backend->pool, con->server);
 
-	event_set(&(con->server->event), con->server->fd, EV_READ, network_mysqld_con_idle_handle, pool_entry);
-	chassis_event_add_local(con->srv, &(con->server->event)); /* add a event, but stay in the same thread */
+	event_set(&(con->server->event), con->server->fd, EV_READ,
+				network_mysqld_con_idle_handle, pool_entry);
+	/* add a event, but stay in the same thread */
+	chassis_event_add_local(con->srv, &(con->server->event));
 
 	st->backend->connected_clients--;
 	st->backend = NULL;
@@ -232,19 +234,16 @@ int network_connection_pool_python_add_connection(network_mysqld_con *con) {
 
 
 void network_mysqld_con_python_free(network_mysqld_con_python_t *st) {
-	if (!st) return;
-
+	if (!st)
+		return;
 	network_injection_queue_free(st->injected.queries);
-
-	if(st->globals){
-		Py_DECREF(st->globals);
-	}
-
+	Py_XDECREF(st->globals);
 	g_free(st);
 }
 
 
-network_socket *network_connection_pool_python_swap(network_mysqld_con *con, int backend_ndx) {
+network_socket *network_connection_pool_python_swap(network_mysqld_con *con,
+			int backend_ndx) {
 	network_backend_t *backend = NULL;
 	network_socket *send_sock;
 	network_mysqld_con_python_t *st = con->plugin_con_state;
@@ -267,14 +266,12 @@ network_socket *network_connection_pool_python_swap(network_mysqld_con *con, int
 	 */
 
 #ifdef DEBUG_CONN_POOL
-	g_debug("%s: (swap) check if we have a connection for this user in the pool '%s'", G_STRLOC, con->client->username->str);
+	g_debug("%s: (swap) check if we have a connection for this user in the "
+				"pool '%s'", G_STRLOC, con->client->username->str);
 #endif
-	if (NULL == (send_sock = network_connection_pool_get(backend->pool, 
-					con->client->response ? con->client->response->username : &empty_username,
-					con->client->default_db))) {
-		/**
-		 * no connections in the pool
-		 */
+	if (NULL == (send_sock = network_connection_pool_get(backend->pool,
+					con->client->response ? con->client->response->username :
+					&empty_username, con->client->default_db))) {
 		st->backend_ndx = -1;
 		return NULL;
 	}
@@ -339,8 +336,8 @@ static GPtrArray *create_fields(PyObject *resultset){
 		return NULL;
 	}
 	if(!PySequence_Check(res_fields)){
-		PyErr_SetString(PyExc_ValueError, "proxy.response.resultset.fields should be eigher a "
-					"list or a tuple");
+		PyErr_SetString(PyExc_ValueError, "proxy.response.resultset.fields "
+					"should be eigher a list or a tuple");
 		return NULL;
 	}
 	GPtrArray *fields = network_mysqld_proto_fielddefs_new();
@@ -394,14 +391,6 @@ static GPtrArray *create_row(PyObject *item){
 		PyObject *elem = PySequence_GetItem(item, i);
 		if(!elem)
 			goto failed;
-		/*
-		if(!PySequence_Check(elem)){
-			PyErr_SetString(PyExc_ValueError, "proxy.response.resultset.rows' items should "
-						"be eigher lists or tuples");
-			Py_DECREF(elem);
-			goto failed;
-		}
-		*/
 		PyObject *elem_str = PyObject_Str(elem);
 		Py_DECREF(elem);
 		if(!elem_str)
@@ -463,7 +452,8 @@ failed:
  *   .packet (in case of nil)
  *  Note: if error occurred, should set the error string.
  */
-int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyObject *proxy){
+int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con,
+			PyObject *proxy){
 	assert(proxy);
 	//network_mysqld_con_python_t *st = con->plugin_con_state;
 
@@ -474,7 +464,8 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyO
 
 	PyObject *res_type = PyObject_GetAttrString(response, "type");
 	if(!res_type){
-		network_mysqld_con_send_error(con->client, C("Cannot get proxy.response.type"));
+		network_mysqld_con_send_error(con->client,
+					C("Cannot get proxy.response.type"));
 		return -1;
 	}
 	int res_type_int = PyInt_AsLong(res_type);
@@ -516,7 +507,8 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyO
 			PyObject *rs = PyObject_GetAttrString(resultset, "rows");
 			PyObject *fss = PyObject_Str(fs);
 			PyObject *rss = PyObject_Str(rs);
-			g_critical("Get resultset:%s, %s", PyString_AsString(fss), PyString_AsString(rss));
+			g_critical("Get resultset:%s, %s", PyString_AsString(fss),
+					PyString_AsString(rss));
 			Py_DECREF(fss);
 			Py_DECREF(rss);
 			Py_DECREF(fs);
@@ -525,19 +517,22 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyO
 
 			GPtrArray *fields = create_fields(resultset);
 			if(!fields){
-				network_mysqld_con_send_error(con->client, C("Cannot get proxy.response.resultset.fields!"));
+				network_mysqld_con_send_error(con->client,
+							C("Cannot get proxy.response.resultset.fields!"));
 				PyErr_Print();
 				PyErr_Clear();
 				return -1;
 			}
 			if(fields->len <= 0){
-				network_mysqld_con_send_error(con->client, C("Size of proxy.response.resultset.fields is 0"));
+				network_mysqld_con_send_error(con->client,
+							C("Size of proxy.response.resultset.fields is 0"));
 				network_mysqld_proto_fielddefs_free(fields);
 				return -1;
 			}
 			GPtrArray *rows = create_rows(resultset);
 			if(!rows){
-				network_mysqld_con_send_error(con->client, C("Cannot get proxy.response.resultset.rows"));
+				network_mysqld_con_send_error(con->client,
+							C("Cannot get proxy.response.resultset.rows"));
 				PyErr_Print();
 				network_mysqld_proto_fielddefs_free(fields);
 				return -1;
@@ -587,7 +582,8 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyO
 		if(!err_code){
 			//Here use the default error code: ER_UNKNOWN_ERROR
 			PyErr_Clear();
-			//network_mysqld_con_send_error(con->client, C("Unknown proxy.response.errcode"));
+			//network_mysqld_con_send_error(con->client,
+			//		C("Unknown proxy.response.errcode"));
 			//g_message("proxy.response.errcode is unknown!");
 			//return -1;
 		}
@@ -600,7 +596,8 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyO
 		if(!sql_state){
 			//Here use the default sql state: 07000
 			PyErr_Clear();
-			//network_mysqld_con_send_error(con->client, C("Unknown proxy.response.sqlstate"));
+			//network_mysqld_con_send_error(con->client,
+			//    C("Unknown proxy.response.sqlstate"));
 			//g_message("proxy.response.sqlstate is unknown!");
 			//return -1;
 		}
@@ -612,12 +609,14 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con, PyO
 		PyObject *err_msg = PyObject_GetAttrString(response, "errmsg");
 		if(!err_msg){
 			PyErr_Clear();
-			network_mysqld_con_send_error(con->client, C("(python) proxy.response.errmsg is nil"));
+			network_mysqld_con_send_error(con->client,
+						C("(python) proxy.response.errmsg is nil"));
 		}
 		else{
 			errmsg = PyString_AsString(err_msg);
 			Py_DECREF(err_msg);
-			network_mysqld_con_send_error_full(con->client, errmsg, strlen(errmsg), errcode, sqlstate);
+			network_mysqld_con_send_error_full(con->client, errmsg,
+						strlen(errmsg), errcode, sqlstate);
 		}
 
 	    break;}

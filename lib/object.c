@@ -103,28 +103,6 @@ PyTypeObject SpainType = {
     Spain_new,                 /* tp_new */
 };
 
-/*
-static PyMethodDef spain_methods[] = {
-    {NULL}
-};
-
-#ifndef PyMODINIC_FUNC
-#define PyMODINIC_FUNC void
-#endif
-
-
-PyMODINIC_FUNC
-initspain(void){
-    if(PyType_Ready(&SpainType) < 0)
-        return;
-    PyObject *m = Py_InitModule3("spain", spain_methods, "");
-    if(!m)
-        return;
-    Py_INCREF(&SpainType);
-    PyModule_AddObject(m, "Spain", (PyObject*)&SpainType);
-}
-*/
-
 PyObject *
 Spain_New(void){
     Spain *s = PyObject_New(Spain, &SpainType);

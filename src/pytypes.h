@@ -67,7 +67,7 @@ struct _proxy{
 	network_mysqld_con *con;
 	PyObject *response;
 	PyObject *globals;
-	PyObject *queryies;
+	PyObject *queries;
 };
 
 struct _queue{

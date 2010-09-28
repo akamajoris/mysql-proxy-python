@@ -18,14 +18,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  LICENSE END */
 
 #include "object.h"
-
 #include "lua-env.h"
 #include "glib-ext.h"
+#include "sql-tokenizer.h"
+#include <dlfcn.h>
 
 #define C(x) x, sizeof(x) - 1
 #define S(x) x->str, x->len
-
-#include "sql-tokenizer.h"
 
 /**
  * split the SQL query into a stream of tokens
@@ -69,11 +68,13 @@ proxy_tokenize(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef tokenizer_methods[] = {
-	{"tokenize", (PyCFunction)proxy_tokenize, METH_VARARGS, "tokenize a sql statement"},
+	{"tokenize", (PyCFunction)proxy_tokenize, METH_VARARGS,
+		"tokenize a sql statement"},
 	{NULL, NULL},
 };
 
 
 PyMODINIT_FUNC inittokenizer(void){
+	//void * handle = dlopen("mysql-proxy", RTLD_LAZY | RTLD_GLOBAL);
 	Py_InitModule("tokenizer", tokenizer_methods);
 }
