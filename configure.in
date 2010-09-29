@@ -308,6 +308,9 @@ else
 	fi
 fi
 
+AM_CONDITIONAL([HAVE_MYSQL_PROXY_SOURCE], [test -n "$MYSQL_PROXY_SOURCE"])
+
+
 
 
 dnl Check for pkg-config
