@@ -98,70 +98,73 @@ int network_mysqld_python_initialize(chassis_plugin_config *config){
 		char* result = getcwd(path_buf, MAX_PATH_LENGTH);
 		if(result){
 			PyObject *curr_path = PyString_FromString(path_buf);
-			g_message("Add %s to sys.path\n", path_buf);
 			PyList_Append(path, curr_path);
 			Py_DECREF(curr_path);
 		}
 		else{
+			Py_DECREF(split_path);
 			g_critical("Script file path is too long! Max length is %d\n",
 						MAX_PATH_LENGTH);
 			return -1;
 		}
 	}
 
-	{
-		//Now load the script
-		PyObject *file_name = PyList_GetItem(split_path, length - 1);
-		PyObject *split_file_name= PyObject_CallMethod(file_name, "split",
-					"si", ".", 1);
-		PyObject *mod_name = PyList_GetItem(split_file_name, 0);
-		PyObject *script_mod = PyImport_Import(mod_name);
-		if(!script_mod){
-			PyObject *exc_type = PyErr_Occurred();
-			if(exc_type){
-				PyErr_Print();
-				PyErr_Clear();
-			}
-			else{
-				g_critical("Unknown error occurred while importing script %s\n",
-							PyString_AsString(mod_name));
-			}
-			return -1;
-		}
-		config->proxy_funcs = g_new0(pyproxy_functions, 1);
-		if(!config->proxy_funcs){
-			g_critical("No memory avaible for alloc proxy functions!\n");
-			return -1;
-		}
+	//Now load the script
+	PyObject *file_name = PyList_GetItem(split_path, length - 1);
+	PyObject *split_file_name= PyObject_CallMethod(file_name, "split",
+				"si", ".", 1);
+	PyObject *mod_name = PyList_GetItem(split_file_name, 0);
+	PyObject *script_mod = PyImport_Import(mod_name);
 
-		//Load the script hook function to config->proxy_methods.
-#define LOAD_FUNC(func) \
-		config->proxy_funcs->func = NULL;\
-		if(PyObject_HasAttrString(script_mod, #func)){\
-			PyObject *fun = PyObject_GetAttrString(script_mod, #func);\
-			if(PyCallable_Check(fun)){\
-				config->proxy_funcs->func = fun;\
-			}\
-			else{\
-				PyObject *func_name = PyObject_Str(mod_name);\
-				g_message("Load %s.%s failed: object %s is not callable!\n", \
-					PyString_AsString(func_name), #func, #func);\
-				Py_DECREF(func_name);\
-			}\
+	if(!script_mod){
+		PyObject *exc_type = PyErr_Occurred();
+		if(exc_type){
+			PyErr_Print();
+			PyErr_Clear();
 		}
-
-		LOAD_FUNC(init)
-		LOAD_FUNC(connect_server)
-		LOAD_FUNC(read_handshake)
-		LOAD_FUNC(read_auth)
-		LOAD_FUNC(read_auth_result)
-		LOAD_FUNC(read_query)
-		LOAD_FUNC(read_query_result)
-		LOAD_FUNC(disconnect_client)
-
+		else
+			g_critical("Unknown error occurred while importing script %s\n",
+						PyString_AsString(mod_name));
+		Py_DECREF(split_file_name);
+		Py_DECREF(split_path);
+		return -1;
+	}
+	config->proxy_funcs = g_new0(pyproxy_functions, 1);
+	if(!config->proxy_funcs){
+		g_critical("No memory avaible for alloc proxy functions!\n");
 		Py_DECREF(script_mod);
 		Py_DECREF(split_file_name);
+		Py_DECREF(split_path);
+		return -1;
 	}
+
+	//Load the script hook function to config->proxy_methods.
+#define LOAD_FUNC(func) \
+	config->proxy_funcs->func = NULL;\
+	if(PyObject_HasAttrString(script_mod, #func)){\
+		PyObject *fun = PyObject_GetAttrString(script_mod, #func);\
+		if(PyCallable_Check(fun)){\
+			config->proxy_funcs->func = fun;\
+		}\
+		else{\
+			PyObject *func_name = PyObject_Str(mod_name);\
+			g_message("Load %s.%s failed: object %s is not callable!\n", \
+				PyString_AsString(func_name), #func, #func);\
+			Py_DECREF(func_name);\
+		}\
+	}
+
+	LOAD_FUNC(init)
+	LOAD_FUNC(connect_server)
+	LOAD_FUNC(read_handshake)
+	LOAD_FUNC(read_auth)
+	LOAD_FUNC(read_auth_result)
+	LOAD_FUNC(read_query)
+	LOAD_FUNC(read_query_result)
+	LOAD_FUNC(disconnect_client)
+
+	Py_DECREF(script_mod);
+	Py_DECREF(split_file_name);
 
     Py_DECREF(split_path);
 	return 0;
@@ -192,15 +195,14 @@ static void network_mysqld_con_idle_handle(int event_fd, short events,
 		 * @todo we have to handle the case that the server really sent use
 		 * something up to now we just ignore it
 		 */
-		if (ioctlsocket(event_fd, FIONREAD, &b)) {
+		if (ioctlsocket(event_fd, FIONREAD, &b))
 			g_critical("ioctl(%d, FIONREAD, ...) failed: %s", event_fd,
 						g_strerror(errno));
-		} else if (b != 0) {
+		else if (b != 0)
 			g_critical("ioctl(%d, FIONREAD, ...) said there is something to "
 						"read, oops: %d", event_fd, b);
-		} else {
+		else
 			network_connection_pool_remove(pool, pool_entry);
-		}
 	}
 }
 
@@ -237,7 +239,7 @@ void network_mysqld_con_python_free(network_mysqld_con_python_t *st) {
 	if (!st)
 		return;
 	network_injection_queue_free(st->injected.queries);
-	Py_XDECREF(st->globals);
+	Py_XDECREF(st->proxy);
 	g_free(st);
 }
 

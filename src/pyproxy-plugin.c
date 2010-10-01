@@ -1,5 +1,7 @@
 /* LICENSE BEGIN
 
+Copyright (C) 2007-2008 MySQL AB, 2008 Sun Microsystems, Inc
+
 Copyright (c) 2010 Ysj.Ray
 
 This program is free software: you can redistribute it and/or modify
@@ -86,20 +88,6 @@ typedef int socklen_t;
 #define DEFAULT_BACKEND_ADDRESS "127.0.0.1:3306"
 #define PYTHON_LIB_PATH "/lib/mysql-proxy/python"
 
-
-#define CREATE_PROXY_OBJECT \
-    Proxy *proxy = (Proxy*)Proxy_New(con);\
-    if(!proxy){\
-        PyErr_Print();\
-        PyErr_Clear();\
-        g_critical("PyProxy: Failed to create the proxy object.");\
-        network_mysqld_con_send_error(con->client,\
-                    C("PyProxy: Failed to create proxy object."));\
-		con->state = CON_STATE_SEND_ERROR;\
-        return PROXY_SEND_RESULT;\
-    }\
-    proxy->globals = st->globals;
-
 #define GET_PYTHON_RESULT(name) \
     if(!result){\
         PyErr_Print();\
@@ -108,7 +96,7 @@ typedef int socklen_t;
         network_mysqld_con_send_error(con->client,\
                 C("PyProxy: Call " #name "() failed. Check the error log."));\
 		con->state = CON_STATE_SEND_ERROR;\
-        return PROXY_SEND_RESULT;\
+		return PROXY_SEND_RESULT;\
     }\
     if(result == Py_None){}\
 	else if(!PyInt_Check(result)){\
@@ -117,7 +105,7 @@ typedef int socklen_t;
         network_mysqld_con_send_error(con->client,\
             C("PyProxy: " #name "() return value invalid."));\
 		con->state = CON_STATE_SEND_ERROR;\
-        return PROXY_SEND_RESULT;\
+		return PROXY_SEND_RESULT;\
     }\
 	else \
 		ret = (network_mysqld_python_stmt_ret)PyInt_AsLong(result);\
@@ -145,16 +133,18 @@ proxy_python_read_query_result(network_mysqld_con *con) {
 
 	inj = g_queue_pop_head(st->injected.queries);
 
-	CREATE_PROXY_OBJECT
 	inj->result_queue = con->server->recv_queue->chunks;
 	PyObject * injection_obj = Injection_New(inj);
 	if(!injection_obj){
-		g_critical("python cannot create inj obj, return PROXY_SEND_RESULT.");
-		Py_DECREF(proxy);
+		PyErr_Print();
+        network_mysqld_con_send_error(con->client,
+                    C("PyProxy: Failed to create injection object."));
+		con->state = CON_STATE_SEND_ERROR;
         return PROXY_SEND_RESULT;
 	}
     PyObject *result = PyObject_CallFunctionObjArgs(
-			GET_FUNC(read_query_result), proxy, injection_obj, NULL);
+			GET_FUNC(read_query_result), st->proxy, injection_obj, NULL);
+	Py_DECREF(injection_obj);
 	GET_PYTHON_RESULT(read_query_result)
 
     if (!con->resultset_is_needed && (PROXY_NO_DECISION != ret)) {
@@ -171,7 +161,7 @@ proxy_python_read_query_result(network_mysqld_con *con) {
         g_assert_cmpint(con->resultset_is_needed, ==, TRUE);
         while ((packet = g_queue_pop_head(recv_sock->recv_queue->chunks)))
 			g_string_free(packet, TRUE);
-        if (network_mysqld_con_python_handle_proxy_response(con, (PyObject *)proxy))
+        if (network_mysqld_con_python_handle_proxy_response(con, st->proxy))
             if (!st->injected.sent_resultset)
                 network_mysqld_con_send_error(con->client, C("(python) handling"
 								" proxy.response failed, check error-log"));
@@ -232,9 +222,8 @@ proxy_python_read_handshake(network_mysqld_con *con) {
     if(!CHECK_FUNC(read_handshake))
         return ret;
 
-	CREATE_PROXY_OBJECT
     PyObject *result = PyObject_CallFunctionObjArgs(
-				GET_FUNC(read_handshake), proxy, NULL);
+				GET_FUNC(read_handshake), st->proxy, NULL);
 	GET_PYTHON_RESULT(read_handshake)
 
     switch(ret) {
@@ -246,8 +235,7 @@ proxy_python_read_handshake(network_mysqld_con *con) {
 					__FILE__, __LINE__);
         ret = PROXY_SEND_RESULT;
     case PROXY_SEND_RESULT:
-        if(network_mysqld_con_python_handle_proxy_response(con,
-						(PyObject *)proxy))
+        if(network_mysqld_con_python_handle_proxy_response(con, st->proxy))
             network_mysqld_con_send_error(con->client, C("(python) handling "
 							"proxy.response failed, check error-log"));
         break;
@@ -345,9 +333,8 @@ proxy_python_read_auth(network_mysqld_con *con) {
     if(!CHECK_FUNC(read_auth))
         return ret;
 
-	CREATE_PROXY_OBJECT
     PyObject *result = PyObject_CallFunctionObjArgs(
-				GET_FUNC(read_auth), proxy, NULL);
+				GET_FUNC(read_auth), st->proxy, NULL);
 	GET_PYTHON_RESULT(read_auth)
 
     switch(ret) {
@@ -355,8 +342,7 @@ proxy_python_read_auth(network_mysqld_con *con) {
         break;
     case PROXY_SEND_RESULT:
         /* answer directly */
-        if (network_mysqld_con_python_handle_proxy_response(con,
-						(PyObject *)proxy))
+        if (network_mysqld_con_python_handle_proxy_response(con, st->proxy))
             network_mysqld_con_send_error(con->client, C("(python) handling "
 							"proxy.response failed, check error-log"));
         break;
@@ -549,7 +535,6 @@ proxy_python_read_auth_result(network_mysqld_con *con) {
     if(!CHECK_FUNC(read_auth_result))
         return ret;
 
-	CREATE_PROXY_OBJECT
 	PyObject *auth = Auth_New(packet->str + NET_HEADER_SIZE,
 				packet->len - NET_HEADER_SIZE);
 	if(!auth){
@@ -562,15 +547,15 @@ proxy_python_read_auth_result(network_mysqld_con *con) {
 		return PROXY_SEND_RESULT;
 	}
     PyObject *result = PyObject_CallFunctionObjArgs(
-                GET_FUNC(read_auth_result), proxy, auth, NULL);
+                GET_FUNC(read_auth_result), st->proxy, auth, NULL);
+	Py_DECREF(auth);
 	GET_PYTHON_RESULT(read_auth_result)
 
     switch(ret){
     case PROXY_NO_DECISION:
         break;
     case PROXY_SEND_RESULT:
-        if (network_mysqld_con_python_handle_proxy_response(con,
-						(PyObject *)proxy))
+        if (network_mysqld_con_python_handle_proxy_response(con, st->proxy))
             network_mysqld_con_send_error(con->client, C("(python) handling "
 							"proxy.response failed, check error-log"));
         break;
@@ -692,7 +677,6 @@ proxy_python_read_query(network_mysqld_con *con) {
     if(!CHECK_FUNC(read_query))
         return ret;
 
-	CREATE_PROXY_OBJECT
 	GString *chunks = g_string_new("");
 	int i = 0;
 	for(i = 0; NULL != (packet = g_queue_peek_nth(
@@ -707,13 +691,13 @@ proxy_python_read_query(network_mysqld_con *con) {
 		return ret;
 	}
     PyObject *result = PyObject_CallFunctionObjArgs(
-                GET_FUNC(read_query), proxy, whole_packet, NULL);
+                GET_FUNC(read_query), st->proxy, whole_packet, NULL);
+	Py_DECREF(whole_packet);
 	GET_PYTHON_RESULT(read_query)
 
     switch (ret) {
     case PROXY_SEND_RESULT:
-        if (network_mysqld_con_python_handle_proxy_response(con,
-						(PyObject *)proxy))
+        if (network_mysqld_con_python_handle_proxy_response(con, st->proxy))
             network_mysqld_con_send_error(con->client, C("(python) handling "
 							"proxy.response failed, check error-log"));
         break;
@@ -991,9 +975,8 @@ proxy_python_connect_server(network_mysqld_con *con) {
     if(!CHECK_FUNC(connect_server))
         return ret;
 
-	CREATE_PROXY_OBJECT
     PyObject *result = PyObject_CallFunctionObjArgs(
-                GET_FUNC(connect_server), proxy, NULL);
+                GET_FUNC(connect_server), st->proxy, NULL);
 	GET_PYTHON_RESULT(connect_server)
 
     switch(ret){
@@ -1003,7 +986,7 @@ proxy_python_connect_server(network_mysqld_con *con) {
     case PROXY_SEND_RESULT:
         //When return PROXY_SEND_RESULT, script's connect_server()
         //must set proxy.response to apporiate value. Check it.
-        if(network_mysqld_con_python_handle_proxy_response(con, (PyObject *)proxy))
+        if(network_mysqld_con_python_handle_proxy_response(con, st->proxy))
             network_mysqld_con_send_error(con->client, C("(python) handling "
 						"proxy.response failed, check error-log"));
         break;
@@ -1202,12 +1185,12 @@ NETWORK_MYSQLD_PLUGIN_PROTO(proxy_init) {
 	g_assert(con->plugin_con_state == NULL);
 	st = network_mysqld_con_python_new();
 
-	st->globals = Globals_New(con->config, con->srv->priv->backends);
-	if(!st->globals){
+	st->proxy = Proxy_New(con);
+	if(!st->proxy){
+        g_critical("PyProxy: Failed to create the proxy object.");\
 		PyErr_Print();
 		PyErr_Clear();
-		g_critical("PyProxy: Failed to create the proxy.globals object.");
-		return NETWORK_SOCKET_ERROR;
+        return NETWORK_SOCKET_ERROR; 
 	}
 
 	con->plugin_con_state = st;
@@ -1223,9 +1206,8 @@ static network_mysqld_python_stmt_ret proxy_python_disconnect_client(network_mys
     if(!CHECK_FUNC(disconnect_client))
         return ret;
 
-	CREATE_PROXY_OBJECT
     PyObject *result = PyObject_CallFunctionObjArgs(
-                con->config->proxy_funcs->disconnect_client, proxy, NULL);
+                GET_FUNC(disconnect_client), st->proxy, NULL);
 	GET_PYTHON_RESULT(disconnect_client)
 
     switch (ret) {

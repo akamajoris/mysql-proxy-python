@@ -51,8 +51,7 @@ def idle_ro(proxy):
 		if s.type == proxy.BACKEND_TYPE_RO and\
 				   s.state != proxy.BACKEND_STATE_DOWN and\
 				   cur_idle_connections > 0:
-			if max_conns == -1 or\
-			   s.connected_clients < max_conns:
+			if max_conns == -1 or s.connected_clients < max_conns:
 				max_conns = s.connected_clients
 				max_conns_ndx = i
 

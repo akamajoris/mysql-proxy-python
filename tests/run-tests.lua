@@ -3,6 +3,8 @@
 
 --[[ LICENSE BEGIN
 
+Copyright (C) 2007-2008 MySQL AB, 2008 Sun Microsystems, Inc
+
 Copyright (c) 2010 Ysj.Ray
 
 This program is free software: you can redistribute it and/or modify

@@ -42,12 +42,12 @@ struct network_mysqld_con_python_injection {
 typedef struct {
 	struct network_mysqld_con_python_injection injected;	/**< A list of queries to send to the backend.*/
 
-	PyObject *globals;
+	PyObject *proxy;
 
 	network_backend_t *backend;
-	int backend_ndx;               /**< [lua] index into the backend-array */
+	int backend_ndx;               /**< [python] index into the backend-array */
 
-	gboolean connection_close;     /**< [lua] set by the lua code to close a connection */
+	gboolean connection_close;     /**< [python] set by the python code to close a connection */
 
 	struct timeval interval;       /**< The interval to be used for evt_timer, currently unused. */
 	struct event evt_timer;        /**< The event structure used to implement the timer callback, currently unused. */

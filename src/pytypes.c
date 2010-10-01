@@ -265,30 +265,17 @@ GETTER_CONST_INT_DEF(Proxy, MYSQL_TYPE_BIT)
 #endif
 
 static PyObject *
-Proxy_get_connection(Proxy *p, void *closure){
-	return Connection_New(p->con);
-}
-static PyObject *
-Proxy_get_globals(Proxy *p, void *closure){
-	if(!p->globals){
-		PyErr_SetString(PyExc_AttributeError, "proxy object has not globals "
-					"attribute yet.");
-		return NULL;
-	}
-	Py_INCREF(p->globals);
-	return p->globals;
-}
-
-static PyObject *
-Proxy_get_queries(Proxy *p, void *closure){
-	network_mysqld_con_python_t * con_state = p->con->plugin_con_state;
-	return Queries_New(con_state->injected.queries);
-}
-
-static PyObject *
 Proxy_get_response(Proxy *p, void *closure){
 	Py_INCREF(p->response);
 	return (PyObject*)p->response;
+}
+static PyObject *
+Proxy_get_queries(Proxy *p, void *closure){
+	network_mysqld_con_python_t * con_state = p->con->plugin_con_state;
+	if(con_state)
+		p->queries = Queries_New(con_state->injected.queries);
+	Py_XINCREF(p->queries);
+	return (PyObject*)p->queries;
 }
 
 static int
@@ -301,6 +288,7 @@ Proxy_set_response(Proxy *p, PyObject *value, void *closure){
 	PyObject *key, *v;
 	Py_ssize_t pos = 0;
 
+	PyDict_Clear(((Response *)p->response)->dict);
 	while(PyDict_Next(value, &pos, &key, &v)){
 		/* do something interesting with the values... */
 		if(!PyString_Check(key)){
@@ -399,23 +387,27 @@ static PyGetSetDef Proxy_getsets[] = {
  GETTER_DECLEAR(Proxy, MYSQL_TYPE_BIT)
 #endif
 
-	GETTER_DECLEAR(Proxy, connection)
-	GETTER_DECLEAR(Proxy, globals)
-	GETTER_DECLEAR(Proxy, queries)
 	GETSET_DECLEAR(Proxy, response)
-
+	GETTER_DECLEAR(Proxy, queries)
 	{0}
 };
 
 static PyMethodDef Proxy_methods[] = {{0}};
-static PyMemberDef Proxy_members[] = {{0}};
+#define OFF(x) offsetof(Proxy, x)
+static PyMemberDef Proxy_members[] = {
+	{"connection", T_OBJECT, OFF(connection), RO, ""},
+	{"globals", T_OBJECT, OFF(globals), RO, ""},
+	{NULL}
+};
+#undef OFF
 
 PY_TYPE_DEF(Proxy)
 
 static void
 Proxy_dealloc(Proxy* self){
-    Py_DECREF(self->response);
-    Py_DECREF(self->queries);
+	Py_XDECREF(self->response);
+    Py_XDECREF(self->queries);
+    Py_XDECREF(self->connection);
     self->ob_type->tp_free((PyObject*)self);
 }
 
@@ -429,12 +421,19 @@ PyObject *Proxy_New(network_mysqld_con *con){
 		return NULL;
 	proxy->con = con;
 	proxy->response = Response_New();
-	if(!proxy->response){
-		Py_DECREF(proxy);
-		return NULL;
-	}
-	proxy->globals = NULL;
+	if(!proxy->response)
+		goto failed;
+	if(!con)
+		return (PyObject *)proxy;
+
+	proxy->globals = Globals_New(con->config, con->srv->priv->backends);
+	proxy->connection = Connection_New(con);
+	if(!proxy->connection)
+		goto failed;
 	return (PyObject *)proxy;
+failed:
+	Py_DECREF(proxy);
+	return NULL;
 }
 
 //------------------------------------Queue------------------------------
@@ -456,6 +455,8 @@ PY_TYPE_DEF(Queue)
 PyObject *
 Queue_New(GQueue *q){
 	Queue *queue = (Queue *)PyObject_New(Queue, &Queue_Type);
+	if(!queue)
+		return NULL;
 	queue->queue = q;
 	return (PyObject*)queue;
 }
@@ -470,8 +471,28 @@ static Py_ssize_t
 users_length(Users* us){
 	return g_hash_table_size(us->pool->users);
 }
+static int
+users_contains(Users* us, PyObject *key){
+	if(!PyString_Check(key)){
+		PyErr_SetString(PyExc_TypeError, "key must be string");
+		return -1;
+	}
+	GQueue *queue = network_connection_pool_get_conns(us->pool,
+				g_string_new(PyString_AsString(key)), NULL);
+	if(queue)
+		return 1;
+	else
+		return 0;
+}
 static PySequenceMethods users_as_sequence = {
-	(lenfunc)users_length
+	(lenfunc)users_length,
+	0,		/* sq_concat */
+	0,		/* sq_repeat */
+	0,		/* sq_item */
+	0,		/* sq_slice */
+	0,		/* sq_ass_item */
+	0,	/* sq_ass_slice */
+	(objobjproc)users_contains  /* sq_contains */
 };
 static PyObject *
 users_subscript(Users *us, PyObject *item){
@@ -486,6 +507,33 @@ users_subscript(Users *us, PyObject *item){
 	PyErr_SetString(PyExc_ValueError, "No such user.");
 	return NULL;
 }
+void users_traverse_func(GString *key, GQueue *entries, void *user_data){
+	PyObject *list = (PyObject *)user_data;
+	assert(PyList_Check(list));
+	PyObject *name = PyString_FromStringAndSize(key->str, key->len);
+	if(!name)
+		return;
+	if(PyList_Append(list, name)){
+		Py_DECREF(name);
+		return;
+	}
+	Py_DECREF(name);
+}
+
+static PyObject *
+users_repr(Users *us){
+	PyObject *list = PyList_New(0);
+	if(!list)
+		return NULL;
+	g_hash_table_foreach(us->pool->users, (GHFunc)users_traverse_func, list);
+	PyObject *result = PyObject_Str(list);
+	if(!result){
+		Py_DECREF(list);
+		return NULL;
+	}
+	Py_DECREF(list);
+	return result;
+}
 static PyMappingMethods users_as_mapping = {
 	0,
 	(binaryfunc)users_subscript
@@ -493,6 +541,8 @@ static PyMappingMethods users_as_mapping = {
 static void Users_Type_Ready(void){
 	Users_Type.tp_as_sequence = &users_as_sequence;
 	Users_Type.tp_as_mapping = &users_as_mapping;
+	Users_Type.tp_repr = (reprfunc)users_repr;
+	Users_Type.tp_flags |= Py_TPFLAGS_HAVE_SEQUENCE_IN;
 }
 PyObject *Users_New(network_connection_pool *pool){
 	Users *users = (Users*)PyObject_New(Users, &Users_Type);
@@ -544,19 +594,16 @@ ConnectionPool_set_max_idle_connections(ConnectionPool *pool,
 	return 0;
 }
 
-static PyObject *
-ConnectionPool_get_users(ConnectionPool *p, void *closure){
-	return Users_New(p->pool);
-}
-
 static PyGetSetDef ConnectionPool_getsets[] = {
 	GETSET_DECLEAR(ConnectionPool, min_idle_connections)
 	GETSET_DECLEAR(ConnectionPool, max_idle_connections)
-	GETTER_DECLEAR(ConnectionPool, users)
 	{0}
 };
 
-static PyMemberDef ConnectionPool_members[] = {{0}};
+static PyMemberDef ConnectionPool_members[] = {
+	{"users", T_OBJECT, offsetof(ConnectionPool, users), RO, ""},
+	{0}
+};
 static PyMethodDef ConnectionPool_methods[] = {{0}};
 
 PY_TYPE_DEF(ConnectionPool)
@@ -565,20 +612,17 @@ PyObject *ConnectionPool_New(network_connection_pool *pool){
 	if(!cp)
 		return NULL;
 	cp->pool = pool;
+	cp->users = Users_New(pool);
+	if(!cp->users){
+		Py_DECREF(cp);
+		return NULL;
+	}
 	return (PyObject *)cp;
 }
 //------------------------------------Backend------------------------------
 static PyObject *
 Backend_get_connected_clients(Backend *b, void *closure){
 	return PyInt_FromLong(b->backend->connected_clients);
-}
-static PyObject *
-Backend_get_dst(Backend *b, void* closure){
-	return Address_New(b->backend->addr);
-}
-static PyObject *
-Backend_get_pool(Backend *b, void* closure){
-	return ConnectionPool_New(b->backend->pool);
 }
 
 static PyObject *
@@ -623,16 +667,20 @@ Backend_set_uuid(Backend *b, PyObject *value, void *closure){
 
 static PyGetSetDef Backend_getsets[] = {
 	GETTER_DECLEAR(Backend, connected_clients)
-	GETTER_DECLEAR(Backend, dst)
 	GETSET_DECLEAR(Backend, state)
 	GETTER_DECLEAR(Backend, type)
 	GETSET_DECLEAR(Backend, uuid)
-	GETTER_DECLEAR(Backend, pool)
 	{0}
 };
 
 static PyMethodDef Backend_methods[] = {{0}};
-static PyMemberDef Backend_members[] = {{0}};
+#define OFF(x) offsetof(Backend, x)
+static PyMemberDef Backend_members[] = {
+	{"dst", T_OBJECT, OFF(dst), RO, ""},
+	{"pool", T_OBJECT, OFF(pool), RO, ""},
+	{0}
+};
+#undef OFF
 
 PY_TYPE_DEF(Backend)
 
@@ -641,7 +689,16 @@ PyObject *Backend_New(network_backend_t *backend){
 	if(!b)
 		return NULL;
 	b->backend = backend;
+	b->dst = Address_New(backend->addr);
+	if(!b->dst)
+		goto failed;
+	b->pool = ConnectionPool_New(b->backend->pool);
+	if(!b->pool)
+		goto failed;
 	return (PyObject *)b;
+failed:
+	Py_DECREF(b);
+	return NULL;
 }
 //------------------------------------Address------------------------------
 static PyObject *
@@ -731,8 +788,8 @@ Config_get_ ## name(Config *obj, void *closure){\
 }
 
 CONFIG_GETTER_MEMBER_STRING_DEF(address)
-GETTER_MEMBER_DEF(Config, backend_addresses)
-GETTER_MEMBER_DEF(Config, read_only_backend_addresses)
+//GETTER_MEMBER_DEF(Config, backend_addresses)
+//GETTER_MEMBER_DEF(Config, read_only_backend_addresses)
 CONFIG_GETTER_MEMBER_INT_DEF(fix_bug_25371)
 CONFIG_GETTER_MEMBER_INT_DEF(profiling)
 CONFIG_GETTER_MEMBER_STRING_DEF(python_script)
@@ -741,8 +798,8 @@ CONFIG_GETTER_MEMBER_INT_DEF(start_proxy)
 
 static PyGetSetDef Config_getsets[] = {
 	GETTER_DECLEAR(Config, address)
-	GETTER_DECLEAR(Config, backend_addresses)
-	GETTER_DECLEAR(Config, read_only_backend_addresses)
+	//GETTER_DECLEAR(Config, backend_addresses)
+	//GETTER_DECLEAR(Config, read_only_backend_addresses)
 	GETTER_DECLEAR(Config, fix_bug_25371)
 	GETTER_DECLEAR(Config, profiling)
 	GETTER_DECLEAR(Config, python_script)
@@ -750,14 +807,21 @@ static PyGetSetDef Config_getsets[] = {
 	GETTER_DECLEAR(Config, start_proxy)
 	{0}
 };
-static PyMemberDef Config_members[] = {{0}};
+#define OFF(x) offsetof(Config, x)
+static PyMemberDef Config_members[] = {
+	{"backend_addresses", T_OBJECT, OFF(backend_addresses), RO, ""},
+	{"read_only_backend_addresses", T_OBJECT, OFF(read_only_backend_addresses),
+		RO, ""},
+	{0}
+};
+#undef OFF
 static PyMethodDef Config_methods[] = {{0}};
 
 static void
 Config_dealloc(Config* self){
-    Py_DECREF(self->backend_addresses);
-    Py_DECREF(self->read_only_backend_addresses);
-    Py_DECREF(self->dict);
+    Py_XDECREF(self->backend_addresses);
+    Py_XDECREF(self->read_only_backend_addresses);
+    Py_XDECREF(self->dict);
     self->ob_type->tp_free((PyObject*)self);
 }
 
@@ -777,7 +841,7 @@ PyObject *Config_New(chassis_plugin_config *config){
 	conf->config = config;
 	int i = 0, j = 0;
 	if(config->backend_addresses)
-	for (; config->backend_addresses[i]; i++) {}
+		for (; config->backend_addresses[i]; i++) {}
 	conf->backend_addresses = PyTuple_New(i);
 	if(!conf->backend_addresses){
 		Py_DECREF(conf);
@@ -790,46 +854,35 @@ PyObject *Config_New(chassis_plugin_config *config){
 	if(config->read_only_backend_addresses)
 		for (; config->read_only_backend_addresses[i]; i++) {}
 	conf->read_only_backend_addresses = PyTuple_New(i);
-	if(!conf->backend_addresses){
-		Py_DECREF(conf->backend_addresses);
-		Py_DECREF(conf);
-		return NULL;
-	}
+	if(!conf->backend_addresses)
+		goto failed;
 	for(j = 0; j < i; j++)
 		PyTuple_SetItem(conf->read_only_backend_addresses, j,
 				PyString_FromString(config->read_only_backend_addresses[j]));
 	conf->dict = PyDict_New();
-	if(!conf->dict){
-		Py_DECREF(conf);
-		return NULL;
-	}
+	if(!conf->dict)
+		goto failed;
 	return (PyObject *)conf;
+failed:
+	Py_DECREF(conf);
+	return NULL;
 }
 //------------------------------------Globals---------------------------------
-static PyObject *
-Globals_get_config(Globals *g, void *closure){
-	//return Config_New(g->config);
-	Py_INCREF(g->config);
-	return g->config;
-}
-static PyObject *
-Globals_get_backends(Globals *g, void *closure){
-	//return Backends_New(g->backends);
-	Py_INCREF(g->backends);
-	return g->backends;
-}
-
-static PyGetSetDef Globals_getsets[] = {
-	GETTER_DECLEAR(Globals, backends)
-	GETTER_DECLEAR(Globals, config)
+static PyGetSetDef Globals_getsets[] = {{0}};
+#define OFF(x) offsetof(Globals, x)
+static PyMemberDef Globals_members[] = {
+	{"backends", T_OBJECT, OFF(backends), RO, ""},
+	{"config", T_OBJECT, OFF(config), RO, ""},
 	{0}
 };
-static PyMemberDef Globals_members[] = {{0}};
+#undef OFF
 static PyMethodDef Globals_methods[] = {{0}};
 
 static void
 Globals_dealloc(Globals* self){
-    Py_DECREF(self->dict);
+    Py_XDECREF(self->backends);
+    Py_XDECREF(self->config);
+    Py_XDECREF(self->dict);
     self->ob_type->tp_free((PyObject*)self);
 }
 
@@ -846,7 +899,6 @@ PyObject *Globals_New(chassis_plugin_config* config,
 	Globals *global = PyObject_New(Globals, &Globals_Type);
 	if(!global)
 		return NULL;
-	//global->backends = backends;
 	global->backends = PyTuple_New(network_backends_count(backends));
 	if(!global->backends)
 		return NULL;
@@ -855,22 +907,17 @@ PyObject *Globals_New(chassis_plugin_config* config,
 						Backend_New(network_backends_get(backends, i))))
 			return NULL;
 	global->config = (PyObject *)Config_New(config);
+	if(!global->config)
+		goto failed;
 	global->dict = PyDict_New();
-	if(!global->dict){
-		Py_DECREF(global);
-		return NULL;
-	}
+	if(!global->dict)
+		goto failed;
 	return (PyObject *)global;
+failed:
+	Py_DECREF(global);
+	return NULL;
 }
 //------------------------------------Connection------------------------------
-static PyObject *
-Connection_get_client(Connection *c, void *closure){
-	return Socket_New(c->con->client);
-}
-static PyObject *
-Connection_get_server(Connection *c, void *closure){
-	return Socket_New(c->con->server);
-}
 static PyObject *
 Connection_get_backend_ndx(Connection *c, void *closure){
 	network_mysqld_con_python_t *con_state = c->con->plugin_con_state;
@@ -889,8 +936,7 @@ Connection_set_backend_ndx(Connection *c, PyObject *value, void *closure){
 	network_mysqld_con_python_t * st = c->con->plugin_con_state;
 	if(be_ndx == -1)
 		network_connection_pool_python_add_connection(c->con);
-	else if(NULL != (send_sock =
-					network_connection_pool_python_swap(c->con, be_ndx)))
+	else if((send_sock = network_connection_pool_python_swap(c->con, be_ndx)))
 		c->con->server = send_sock;
 	else
 		st->backend_ndx = be_ndx;
@@ -920,13 +966,17 @@ Connection_set_connection_close(Connection *conn, PyObject *value,
 }
 
 static PyGetSetDef Connection_getsets[] = {
-	GETTER_DECLEAR(Connection, client)
-	GETTER_DECLEAR(Connection, server)
 	GETSET_DECLEAR(Connection, backend_ndx)
 	GETSET_DECLEAR(Connection, connection_close)
 	{0}
 };
-static PyMemberDef Connection_members[] = {{0}};
+#define OFF(x) offsetof(Connection, x)
+static PyMemberDef Connection_members[] = {
+	{"client", T_OBJECT, OFF(client), RO, ""},
+	{"server", T_OBJECT, OFF(server), RO, ""},
+	{0}
+};
+#undef OFF
 static PyMethodDef Connection_methods[] = {{0}};
 
 PY_TYPE_DEF(Connection)
@@ -935,7 +985,16 @@ PyObject *Connection_New(network_mysqld_con *con){
 	if(!conn)
 		return NULL;
 	conn->con = con;
+	conn->client = Socket_New(con->client);
+	if(!conn->client)
+		goto failed;
+	conn->server = Socket_New(con->server);
+	if(!conn->server)
+		goto failed;
 	return (PyObject *)conn;
+failed:
+	Py_DECREF(conn);
+	return NULL;
 }
 //--------------------------Socket-----------------------------
 static PyObject *
@@ -1008,7 +1067,11 @@ static PyGetSetDef Socket_getsets[] = {
 	GETTER_DECLEAR(Socket, scrambled_password)
 	{0}
 };
-static PyMemberDef Socket_members[] = {{0}};
+#define OFF(x) offsetof(Socket, x)
+static PyMemberDef Socket_members[] = {
+	{0}
+};
+#undef OFF
 static PyMethodDef Socket_methods[] = {{0}};
 
 PY_TYPE_DEF(Socket)
@@ -1690,6 +1753,7 @@ Queries_New(network_injection_queue *queries){
 
 int init_python_types(void){
 	//TODO init_python_types
+	Proxy_Type_Ready();
 	PY_TYPE_READY(Proxy)
 	PY_TYPE_READY(Connection)
 	Globals_Type_Ready();

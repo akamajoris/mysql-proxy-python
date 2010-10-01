@@ -65,6 +65,7 @@ typedef struct _queries Queries;
 struct _proxy{
 	PyObject_HEAD
 	network_mysqld_con *con;
+	PyObject *connection;
 	PyObject *response;
 	PyObject *globals;
 	PyObject *queries;
@@ -83,11 +84,14 @@ struct _users{
 struct _connection_pool{
 	PyObject_HEAD
 	network_connection_pool *pool;
+	PyObject *users;
 };
 
 struct _backend{
 	PyObject_HEAD
 	network_backend_t *backend;
+	PyObject *dst;
+	PyObject *pool;
 };
 
 struct _address{
@@ -105,8 +109,6 @@ struct _config{
 
 struct _globals{
 	PyObject_HEAD
-	//network_backends_t *backends;
-	//chassis_plugin_config* config;
 	PyObject *backends;
 	PyObject *config;
 	PyObject *dict;
@@ -115,6 +117,8 @@ struct _globals{
 struct _connection{
 	PyObject_HEAD
 	network_mysqld_con *con;
+	PyObject *client;
+	PyObject *server;
 };
 
 struct _socket{
