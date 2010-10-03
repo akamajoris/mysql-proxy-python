@@ -965,17 +965,25 @@ Connection_set_connection_close(Connection *conn, PyObject *value,
 	return 0;
 }
 
+static PyObject *
+Connection_get_server(Connection *conn, void *closuer){
+	return Socket_New(conn->con->server);
+}
+
+static PyObject *
+Connection_get_client(Connection *conn, void *closuer){
+	return Socket_New(conn->con->client);
+}
+
 static PyGetSetDef Connection_getsets[] = {
 	GETSET_DECLEAR(Connection, backend_ndx)
 	GETSET_DECLEAR(Connection, connection_close)
+	GETTER_DECLEAR(Connection, server)
+	GETTER_DECLEAR(Connection, client)
 	{0}
 };
 #define OFF(x) offsetof(Connection, x)
-static PyMemberDef Connection_members[] = {
-	{"client", T_OBJECT, OFF(client), RO, ""},
-	{"server", T_OBJECT, OFF(server), RO, ""},
-	{0}
-};
+static PyMemberDef Connection_members[] = {{0}};
 #undef OFF
 static PyMethodDef Connection_methods[] = {{0}};
 
@@ -985,16 +993,7 @@ PyObject *Connection_New(network_mysqld_con *con){
 	if(!conn)
 		return NULL;
 	conn->con = con;
-	conn->client = Socket_New(con->client);
-	if(!conn->client)
-		goto failed;
-	conn->server = Socket_New(con->server);
-	if(!conn->server)
-		goto failed;
 	return (PyObject *)conn;
-failed:
-	Py_DECREF(conn);
-	return NULL;
 }
 //--------------------------Socket-----------------------------
 static PyObject *

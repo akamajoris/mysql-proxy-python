@@ -117,8 +117,6 @@ struct _globals{
 struct _connection{
 	PyObject_HEAD
 	network_mysqld_con *con;
-	PyObject *client;
-	PyObject *server;
 };
 
 struct _socket{

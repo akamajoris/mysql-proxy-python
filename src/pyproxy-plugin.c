@@ -1169,10 +1169,8 @@ NETWORK_MYSQLD_PLUGIN_PROTO(proxy_connect_server) {
 		auth_packet = g_string_new(NULL);
 		network_mysqld_proto_append_auth_challenge(auth_packet,
 					con->server->challenge);
-
 		network_mysqld_queue_append(con->client, con->client->send_queue,
 				S(auth_packet));
-
 		g_string_free(auth_packet, TRUE);
 		con->state = CON_STATE_SEND_HANDSHAKE;
 	}
@@ -1187,10 +1185,10 @@ NETWORK_MYSQLD_PLUGIN_PROTO(proxy_init) {
 
 	st->proxy = Proxy_New(con);
 	if(!st->proxy){
-        g_critical("PyProxy: Failed to create the proxy object.");\
+        g_critical("PyProxy: Failed to create the proxy object.");
 		PyErr_Print();
 		PyErr_Clear();
-        return NETWORK_SOCKET_ERROR; 
+        return NETWORK_SOCKET_ERROR;
 	}
 
 	con->plugin_con_state = st;
