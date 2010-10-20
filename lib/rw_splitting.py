@@ -69,8 +69,6 @@ def check_rwsplit_config(fun):
 
 @check_rwsplit_config
 def connect_server(proxy):
-	if is_debug:
-		print 'Now connect server'
 	proxy.globals.is_in_transaction = False
 	proxy.globals.is_in_select_calc_found_rows = False
 	is_debug = proxy.globals.config.rwsplit.is_debug
