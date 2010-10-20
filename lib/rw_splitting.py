@@ -48,7 +48,7 @@ def check_rwsplit_config(fun):
 			proxy.globals.config.rwsplit = rwsplit_config({
 				'min_idle_connections' : 4,
 				'max_idle_connections' : 8,
-				'is_debug' : False
+				'is_debug' : True
 			})
 		return fun(*args, **kwds)
 	return wrapper
@@ -69,22 +69,24 @@ def check_rwsplit_config(fun):
 
 @check_rwsplit_config
 def connect_server(proxy):
+	if is_debug:
+		print 'Now connect server'
 	proxy.globals.is_in_transaction = False
 	proxy.globals.is_in_select_calc_found_rows = False
 	is_debug = proxy.globals.config.rwsplit.is_debug
-	#- make sure that we connect to each back at least ones to 
+	#- make sure that we connect to each backend at least ones to
 	#- keep the connections to the servers alive
 	#-
-	#- on read_query we can switch the backs again to another backend
+	#- on read_query we can switch the backends again to another backend
 
 	if is_debug :
 		print
-		print "[connect_server] " + proxy.connection.client.src.name
+		print "[connect_server] %s" % proxy.connection.client.src.name
 
 
-	rw_ndx = 0
+	rw_ndx = -1
 
-	#- init all backs
+	#- init all backends
 	for i, s in enumerate(proxy.globals.backends):
 		pool     = s.pool #- we don't have a username yet, try to find a connections which is idling
 		try:
@@ -106,39 +108,43 @@ def connect_server(proxy):
 		if s.type == proxy.BACKEND_TYPE_RW and\
 		   s.state != proxy.BACKEND_STATE_DOWN and\
 		   cur_idle < pool.min_idle_connections :
+			if is_debug:
+				print ' found a backend rw, select backend:', i
 			proxy.connection.backend_ndx = i
 			break
 		elif s.type == proxy.BACKEND_TYPE_RO and\
 		       s.state != proxy.BACKEND_STATE_DOWN and\
 		       cur_idle < pool.min_idle_connections :
+			if is_debug:
+				print ' found a backend ro, select backend:', i
 			proxy.connection.backend_ndx = i
 			break
 		elif s.type == proxy.BACKEND_TYPE_RW and\
 		       s.state != proxy.BACKEND_STATE_DOWN and\
-		       rw_ndx == 0 :
+		       rw_ndx == -1:
 			rw_ndx = i
 
-	if proxy.connection.backend_ndx == 0 :
+	if proxy.connection.backend_ndx == -1:
 		if is_debug :
-			print("  [" + rw_ndx + "] taking master as default")
+			print(" backend_ndx==-1, [" + str(rw_ndx) + "] taking master as default")
 		proxy.connection.backend_ndx = rw_ndx
 
-	#- pick a random back
-	#-
-	#- we someone have to skip DOWN backs
-
-	#- ok, did we got a back ?
+	#- pick a random backend
+	#- we someone have to skip DOWN backends
+	#- ok, did we got a backend ?
 
 	if proxy.connection.server :
 		if is_debug :
-			print "  using pooled connection from: " + proxy.connection.backend_ndx
+			print "  using pooled connection from: %s, stay" % proxy.connection.backend_ndx
 
 		#- stay with it
 		return proxy.PROXY_IGNORE_RESULT
 
 	if is_debug :
-		print("  [" + proxy.connection.backend_ndx + "] idle-conns below min-idle")
+		print "  [%s] idle-conns below min-idle" % proxy.connection.backend_ndx
 
+	if is_debug :
+		print "  [Finally choose backend_ndx: %s]" % proxy.connection.backend_ndx
 	#- open a new connection
 
 
@@ -152,10 +158,10 @@ def connect_server(proxy):
 def read_auth_result( proxy, auth ):
 	is_debug = proxy.globals.config.rwsplit.is_debug
 	if is_debug :
-		print "[read_auth_result] " + proxy.connection.client.src.name
+		print "[read_auth_result] %s" % proxy.connection.client.src.name
 	if ord((auth.packet)[0]) == proxy.MYSQLD_PACKET_OK :
 		#- auth was fine, disconnect from the server
-		proxy.connection.backend_ndx = 0
+		proxy.connection.backend_ndx = -1
 	elif ord((auth.packet)[0]) == proxy.MYSQLD_PACKET_ERR :
 		#- auth failed
 		pass
@@ -178,7 +184,7 @@ def read_query(proxy, packet):
 	#- looks like we have to forward this statement to a back
 	if is_debug :
 		print "[read_query] " + proxy.connection.client.src.name
-		print "  current back   = " + proxy.connection.backend_ndx
+		print "  current back   = %s" % proxy.connection.backend_ndx
 		print "  client default db = " + c.default_db
 		print "  client username   = " + c.username
 		if cmd.type == proxy.COM_QUERY :
@@ -191,16 +197,16 @@ def read_query(proxy, packet):
 			'type' : proxy.MYSQLD_PACKET_OK,
 		}
 		if is_debug :
-			print("  (QUIT) current back   = " + proxy.connection.backend_ndx)
+			print "  (QUIT) current back   = %s" % proxy.connection.backend_ndx
 
 		return proxy.PROXY_SEND_RESULT
 
-	proxy.queries.append(1, packet, True )
+	proxy.queries.append(1, packet, True)
 
 	#- read/write splitting
 	#-
 	#- s all non-transactional SELECTs to a slave
-	if not proxy.globals.is_in_transaction and cmd.type == proxy.COM_QUERY :
+	if not proxy.globals.is_in_transaction and cmd.type == proxy.COM_QUERY:
 		tokens = tokens or tokenizer.tokenize(cmd.query)
 
 		stmt = tokenizer.first_stmt_token(tokens)
@@ -212,8 +218,8 @@ def read_query(proxy, packet):
 			for token in tokens:
 				#- SQL_CALC_FOUND_ROWS + FOUND_ROWS() have to be executed
 				#- on the same connection
-				#- print("token: " + token.token_name)
-				#- print("  val: " + token.text)
+				#- print "token: " + token.token_name
+				#- print "  val: " + token.text
 				if not proxy.globals.is_in_select_calc_found_rows and \
 						token.token_name == "TK_SQL_SQL_CALC_FOUND_ROWS" :
 					proxy.globals.is_in_select_calc_found_rows = True
@@ -231,25 +237,29 @@ def read_query(proxy, packet):
 			#- connection
 			if not is_insert_id :
 				backend_ndx = lb.idle_ro(proxy)
+				if is_debug:
+					print ' no is_insert_id, select', backend_ndx
 
-				if backend_ndx > 0 :
+				if backend_ndx >= 0 :
 					proxy.connection.backend_ndx = backend_ndx
 			else:
 				print "   found a SELECT LAST_INSERT_ID(), staying on the same back"
 
 	#- no back selected yet, pick a master
-	if proxy.connection.backend_ndx == 0 :
+	if proxy.connection.backend_ndx == -1:
 		#- we don't have a back right now
 		#-
 		#- let's pick a master as a good default
 		#-
 		proxy.connection.backend_ndx = lb.idle_failsafe_rw(proxy)
+		if is_debug:
+			print ' backend_ndx = -1(2), select', proxy.connection.backend_ndx
 
 	#- by now we should have a back
 	#-
 	#- in case the master is down, we have to close the client connections
 	#- otherwise we can go on
-	if proxy.connection.backend_ndx == 0 :
+	if proxy.connection.backend_ndx == -1:
 		return proxy.PROXY_SEND_QUERY
 
 	s = proxy.connection.server
@@ -266,8 +276,8 @@ def read_query(proxy, packet):
 
 	#- s to master
 	if is_debug :
-		if proxy.connection.backend_ndx > 0 :
-			b = proxy.globals.backs[proxy.connection.backend_ndx]
+		if proxy.connection.backend_ndx >= 0 :
+			b = proxy.globals.backends[proxy.connection.backend_ndx]
 			print "  sing to backend : " + b.dst.name
 			print "    is_slave         : " + str(b.type == proxy.BACKEND_TYPE_RO)
 			print "    server default db: " + s.default_db
@@ -301,7 +311,7 @@ def read_query_result(proxy, inj ):
 				proxy.response = {
 					'type' : proxy.MYSQLD_PACKET_ERR,
 					'errmsg' : "can't change DB "+ proxy.connection.client.default_db +
-						" to on slave " + proxy.globals.backs[proxy.connection.backend_ndx].dst.name
+						" to on slave " + proxy.globals.backends[proxy.connection.backend_ndx].dst.name
 				}
 
 				return proxy.PROXY_SEND_RESULT
@@ -315,7 +325,10 @@ def read_query_result(proxy, inj ):
 	   not proxy.globals.is_in_select_calc_found_rows and\
 	   not have_last_insert_id :
 		#- release the back
-		proxy.connection.backend_ndx = 0
+		if is_debug:
+			print 'in transaction, and in_select_calc_found_rows, and\
+					have_last_insert_id, backend_ndx=-1'
+		proxy.connection.backend_ndx = -1
 	elif is_debug :
 		print("(read_query_result) staying on the same back")
 		print("    in_trans        : " + str(proxy.globals.is_in_transaction))
@@ -336,6 +349,8 @@ def disconnect_client(proxy):
 
 	#- make sure we are disconnection from the connection
 	#- to move the connection into the pool
-	proxy.connection.backend_ndx = 0
+	if is_debug:
+		print 'disconnect client, backend_ndx=-1'
+	proxy.connection.backend_ndx = -1
 
 

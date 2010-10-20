@@ -19,7 +19,7 @@
 
 
 def idle_failsafe_rw(proxy):
-	backend_ndx = 0
+	backend_ndx = -1
 
 	for i, s in enumerate(proxy.globals.backends):
 		try:
