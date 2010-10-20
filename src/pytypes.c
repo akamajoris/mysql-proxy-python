@@ -275,7 +275,7 @@ Proxy_get_queries(Proxy *p, void *closure){
 	if(con_state)
 		p->queries = Queries_New(con_state->injected.queries);
 	Py_XINCREF(p->queries);
-	return (PyObject*)p->queries;
+	return (PyObject *)p->queries;
 }
 
 static int
@@ -423,6 +423,9 @@ PyObject *Proxy_New(network_mysqld_con *con){
 	proxy->response = Response_New();
 	if(!proxy->response)
 		goto failed;
+	proxy->queries = NULL;
+	proxy->globals = NULL;
+	proxy->connection = NULL;
 	if(!con)
 		return (PyObject *)proxy;
 

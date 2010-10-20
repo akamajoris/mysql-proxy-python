@@ -602,7 +602,7 @@ NETWORK_MYSQLD_PLUGIN_PROTO(proxy_read_auth_result) {
 	/**
 	 * recv_sock still points to the old backend that
 	 * we received the packet from.
-	 * backend_ndx = 0 might have reset con->server
+	 * backend_ndx = -1 might have reset con->server
 	 */
 
 	switch (proxy_python_read_auth_result(con)) {
@@ -1183,12 +1183,14 @@ NETWORK_MYSQLD_PLUGIN_PROTO(proxy_init) {
 	g_assert(con->plugin_con_state == NULL);
 	st = network_mysqld_con_python_new();
 
-	st->proxy = Proxy_New(con);
-	if(!st->proxy){
-        g_critical("PyProxy: Failed to create the proxy object.");
-		PyErr_Print();
-		PyErr_Clear();
-        return NETWORK_SOCKET_ERROR;
+	if(con->config->proxy_funcs){
+		st->proxy = Proxy_New(con);
+		if(!st->proxy){
+			g_critical("PyProxy: Failed to create the proxy object.");
+			PyErr_Print();
+			PyErr_Clear();
+			return NETWORK_SOCKET_ERROR;
+		}
 	}
 
 	con->plugin_con_state = st;

@@ -81,8 +81,6 @@ int network_mysqld_python_initialize(chassis_plugin_config *config){
 		PyErr_Clear();
 		return -1;
 	}
-	//TODO
-	//Here initialize globals object and the builtin proxy object.
 
     PyObject *script = PyString_FromString(config->python_script);
     PyObject *split_path = PyObject_CallMethod(script, "rsplit", "si", "/", 1);
@@ -92,21 +90,19 @@ int network_mysqld_python_initialize(chassis_plugin_config *config){
     assert(length == 2);
     PyList_Append(path, PyList_GetItem(split_path, 0));
 
-    {
-		// Add current dir to sys.path.
-		char path_buf[MAX_PATH_LENGTH];
-		char* result = getcwd(path_buf, MAX_PATH_LENGTH);
-		if(result){
-			PyObject *curr_path = PyString_FromString(path_buf);
-			PyList_Append(path, curr_path);
-			Py_DECREF(curr_path);
-		}
-		else{
-			Py_DECREF(split_path);
-			g_critical("Script file path is too long! Max length is %d\n",
-						MAX_PATH_LENGTH);
-			return -1;
-		}
+	// Add current dir to sys.path.
+	char path_buf[MAX_PATH_LENGTH];
+	char* result = getcwd(path_buf, MAX_PATH_LENGTH);
+	if(result){
+		PyObject *curr_path = PyString_FromString(path_buf);
+		PyList_Append(path, curr_path);
+		Py_DECREF(curr_path);
+	}
+	else{
+		Py_DECREF(split_path);
+		g_critical("Script file path is too long! Max length is %d\n",
+					MAX_PATH_LENGTH);
+		return -1;
 	}
 
 	//Now load the script
@@ -233,7 +229,6 @@ int network_connection_pool_python_add_connection(network_mysqld_con *con) {
 
 	return 0;
 }
-
 
 void network_mysqld_con_python_free(network_mysqld_con_python_t *st) {
 	if (!st)
@@ -457,7 +452,6 @@ failed:
 int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con,
 			PyObject *proxy){
 	assert(proxy);
-	//network_mysqld_con_python_t *st = con->plugin_con_state;
 
 	PyObject *response = PyObject_GetAttrString(proxy, "response");
 	//Note: the response is fetched through the tp_getset, and is a new reference.
@@ -504,19 +498,6 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con,
 		else{
 			Py_DECREF(resultset);
 
-			/*
-			PyObject *fs = PyObject_GetAttrString(resultset, "fields");
-			PyObject *rs = PyObject_GetAttrString(resultset, "rows");
-			PyObject *fss = PyObject_Str(fs);
-			PyObject *rss = PyObject_Str(rs);
-			g_critical("Get resultset:%s, %s", PyString_AsString(fss),
-					PyString_AsString(rss));
-			Py_DECREF(fss);
-			Py_DECREF(rss);
-			Py_DECREF(fs);
-			Py_DECREF(rs);
-			*/
-
 			GPtrArray *fields = create_fields(resultset);
 			if(!fields){
 				network_mysqld_con_send_error(con->client,
@@ -541,17 +522,6 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con,
 			}
 
 			network_mysqld_con_send_resultset(con->client, fields, rows);
-
-			/*
-			g_critical("ROOOOOOOOOOOws:");
-			guint j;
-			for(j = 0; j < rows->len; j++){
-				GPtrArray *row = rows->pdata[j];
-				guint k;
-				for(k = 0; k < row->len; k++)
-					g_critical("\t%s", row[k]);
-			}
-			*/
 
 			if (fields) {
 				network_mysqld_proto_fielddefs_free(fields);
@@ -581,28 +551,18 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con,
 		gchar *errmsg = NULL;
 
 		PyObject *err_code = PyObject_GetAttrString(response, "errcode");
-		if(!err_code){
+		if(!err_code)
 			//Here use the default error code: ER_UNKNOWN_ERROR
 			PyErr_Clear();
-			//network_mysqld_con_send_error(con->client,
-			//		C("Unknown proxy.response.errcode"));
-			//g_message("proxy.response.errcode is unknown!");
-			//return -1;
-		}
 		else{
 			errcode = PyInt_AsLong(err_code);
 			Py_DECREF(err_code);
 		}
 
 		PyObject *sql_state = PyObject_GetAttrString(response, "sqlstate");
-		if(!sql_state){
+		if(!sql_state)
 			//Here use the default sql state: 07000
 			PyErr_Clear();
-			//network_mysqld_con_send_error(con->client,
-			//    C("Unknown proxy.response.sqlstate"));
-			//g_message("proxy.response.sqlstate is unknown!");
-			//return -1;
-		}
 		else{
 			sqlstate = PyString_AsString(sql_state);
 			Py_DECREF(sql_state);
@@ -625,10 +585,8 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con,
 
 	case MYSQLD_PACKET_RAW:{
 		PyObject *packets = PyObject_GetAttrString(response, "packets");
-		if(!packets){
-			//g_critical("No response.packets");
+		if(!packets)
 			goto queue_reset;
-		}
 
 		int i;
 		for(i = 0; i < PySequence_Size(packets); i++){
@@ -644,20 +602,14 @@ int network_mysqld_con_python_handle_proxy_response(network_mysqld_con *con,
 				goto queue_reset;
 			}
 
-			/*
-			g_critical("Now get packets:len=%d", PyString_Size(item));
-			int k;
-			for(k = 0; k < PyString_Size(item); k++)
-				g_critical("%d: %d", k, PyString_AsString(item)[k]);
-			*/
-
 			network_mysqld_queue_append(con->client, con->client->send_queue,
 						PyString_AsString(item), PyString_Size(item));
 			Py_DECREF(item);
 		}
 		Py_DECREF(packets);
 queue_reset:
-		network_mysqld_queue_reset(con->client); /* reset the packet-id checks */
+		/* reset the packet-id checks */
+		network_mysqld_queue_reset(con->client);
 		break;}
 	default:
 		g_critical("Now the response type is unknown: %d", res_type_int);
