@@ -1460,7 +1460,8 @@ int network_mysqld_pyproxy_plugin_apply_config(chassis *chas,
 		return 0;
 	}
 
-	if (!config->address) config->address = g_strdup(DEFAULT_PROXY_ADDRESS);
+	if (!config->address)
+		config->address = g_strdup(DEFAULT_PROXY_ADDRESS);
 	if (!config->backend_addresses) {
 		config->backend_addresses = g_new0(char *, 2);
 		config->backend_addresses[0] = g_strdup(DEFAULT_BACKEND_ADDRESS);

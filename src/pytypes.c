@@ -1188,6 +1188,8 @@ ResponseResultset_New(PyObject *fields, PyObject *rows){
 	return (PyObject *)rr;
 }
 //-------------------------Response----------------------
+
+/*
 #define RESPONSE_GETTER_MEMBER_DEF(name) \
 static PyObject *\
 Response_get_ ## name(Response *r, void *closure){\
@@ -1200,7 +1202,7 @@ Response_get_ ## name(Response *r, void *closure){\
 	Py_INCREF(res);\
 	return res;\
 }
-
+*/
 
 static PyGetSetDef Response_getsets[] = {{0}};
 static PyMemberDef Response_members[] = {{0}};
@@ -1225,16 +1227,11 @@ PyObject *Response_New(void){
 	Response *response = (Response *)PyObject_New(Response, &Response_Type);
 	if(!response)
 		return NULL;
-	//Response_reset(response);
-	//response->resultset = (ResponseResultset *)ResponseResultset_New((PyObject *)PyList_New(0), (PyObject *)PyList_New(0));
-	//response->packets = (PyListObject *)PyList_New(0);
 	response->dict = PyDict_New();
 	if(!response->dict){
 		Py_DECREF(response);
 		return NULL;
 	}
-	//PyDict_SetItemString(response->dict, "errcode", PyInt_FromLong(ER_UNKNOWN_ERROR));
-	//Response_reset(response);
 	return (PyObject *)response;
 }
 //--------------------------------Auth---------------------------
